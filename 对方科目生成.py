@@ -60,6 +60,7 @@ MITM_ITERATION_LIMIT = 300000
 
 # 账套列识别关键词（用于多公司账套检测）
 LEDGER_ACCOUNT_KEYWORDS = ['账套', '核算账套', '公司账套', '账套名', '公司名称', '核算主体', '主体名称']
+AMOUNT_COLUMNS = ['借方发生额', '贷方发生额']
 
 # ==========================================
 # 金融级精度引擎
@@ -1521,6 +1522,26 @@ def apply_column_mapping(df: pd.DataFrame, mapping: Dict[str, str]) -> pd.DataFr
     
     return df
 
+
+def _normalize_amount_columns(df: pd.DataFrame) -> Optional[pd.DataFrame]:
+    """规范化金额列；非空且无法解析的值会直接判定为错误。"""
+    for col in AMOUNT_COLUMNS:
+        原始值 = df[col]
+        文本值 = 原始值.map(lambda x: str(x).strip() if pd.notna(x) else "")
+        标准化文本 = 文本值.str.replace(",", "", regex=False).str.replace("，", "", regex=False)
+        转换结果 = pd.to_numeric(标准化文本, errors='coerce')
+
+        非空原值掩码 = 原始值.notna() & 标准化文本.ne("")
+        非法值掩码 = 非空原值掩码 & 转换结果.isna()
+        if 非法值掩码.any():
+            非法样例 = [f"第{索引 + 2}行={原始值.iloc[索引]!r}" for 索引 in df.index[非法值掩码][:5]]
+            print(f"错误: [{col}] 列存在无法识别的金额值：{'; '.join(非法样例)}")
+            return None
+
+        df[col] = 转换结果.fillna(0.0)
+
+    return df
+
 def load_and_preprocess_data(input_path: str, interactive: bool) -> Optional[pd.DataFrame]:
     """加载并预处理数据。"""
     GUI_PROGRESS.update(0, "初始化...", "准备阶段")
@@ -1599,8 +1620,9 @@ def load_and_preprocess_data(input_path: str, interactive: bool) -> Optional[pd.
         print("注意：已禁用日期格式自动转换，将直接使用原文件中的[会计月]文本进行分组。")
         df['会计月'] = df['会计月'].astype(str).str.strip()
 
-    df['借方发生额'] = pd.to_numeric(df['借方发生额'], errors='coerce').fillna(0)
-    df['贷方发生额'] = pd.to_numeric(df['贷方发生额'], errors='coerce').fillna(0)
+    df = _normalize_amount_columns(df)
+    if df is None:
+        return None
     
     print("数据预处理完成。")
     return df

@@ -7,9 +7,40 @@ import pandas as pd
 from src.pipeline.group_processor import process_group
 from src.pipeline.orchestrator import run_processing_pipeline
 from src.pipeline.validator import validate_results
+from src.io.reader import load_and_preprocess_data
 
 
 class 关键回归测试(unittest.TestCase):
+    def test_非法金额不会再被静默转成零(self):
+        原始数据 = pd.DataFrame([
+            {'会计月': '1月', '凭证种类': '记', '凭证编号': '001', '一级科目': '银行存款', '借方发生额': 'abc', '贷方发生额': 0},
+            {'会计月': '1月', '凭证种类': '记', '凭证编号': '001', '一级科目': '应收账款', '借方发生额': 0, '贷方发生额': 100},
+        ])
+
+        with tempfile.TemporaryDirectory() as 临时目录:
+            输入路径 = Path(临时目录) / '非法金额.xlsx'
+            原始数据.to_excel(输入路径, index=False)
+
+            结果 = load_and_preprocess_data(str(输入路径), interactive=False)
+
+        self.assertIsNone(结果)
+
+    def test_千分位金额格式仍可正常解析(self):
+        原始数据 = pd.DataFrame([
+            {'会计月': '1月', '凭证种类': '记', '凭证编号': '001', '一级科目': '银行存款', '借方发生额': '1,234.56', '贷方发生额': ''},
+            {'会计月': '1月', '凭证种类': '记', '凭证编号': '001', '一级科目': '应收账款', '借方发生额': '', '贷方发生额': '1,234.56'},
+        ])
+
+        with tempfile.TemporaryDirectory() as 临时目录:
+            输入路径 = Path(临时目录) / '千分位金额.xlsx'
+            原始数据.to_excel(输入路径, index=False)
+
+            结果 = load_and_preprocess_data(str(输入路径), interactive=False)
+
+        self.assertIsNotNone(结果)
+        self.assertEqual(float(结果.iloc[0]['借方发生额']), 1234.56)
+        self.assertEqual(float(结果.iloc[1]['贷方发生额']), 1234.56)
+
     def test_空输出校验不再崩溃(self):
         原始数据 = pd.DataFrame([{'借方发生额': 0.0, '贷方发生额': 0.0}])
         空输出 = pd.DataFrame()
