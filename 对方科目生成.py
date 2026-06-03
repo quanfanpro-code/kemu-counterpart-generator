@@ -1914,6 +1914,7 @@ def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
 def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_path: str):
     """执行核心处理流水线（适合在工作线程中运行）。"""
     # 3. 执行处理
+    pipeline_start = time.time()
     out_df, failed_groups = perform_processing(df)
 
     # 4. 验证结果
@@ -1927,6 +1928,25 @@ def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_p
 
     # 7. 保存结果
     save_output_file(output_path, df, out_df, anomaly_df, aggregated_patterns, stats_df, failed_groups)
+
+    # 8. 输出统计摘要
+    pipeline_elapsed = time.time() - pipeline_start
+    total_input_rows = len(df)
+    total_output_rows = len(out_df)
+    matched_count = len(out_df[out_df['匹配类型'] == '标准模板']) if '匹配类型' in out_df.columns else 0
+    algo_count = len(out_df[out_df['匹配类型'] == '算法生成']) if '匹配类型' in out_df.columns else 0
+    fallback_count = len(out_df[(out_df['匹配类型'].str.contains('兜底拆分|异常剩余', na=False))]) if '匹配类型' in out_df.columns else 0
+
+    print("=" * 50)
+    print(f"📊 处理统计摘要")
+    print(f"  输入数据行数: {total_input_rows}")
+    print(f"  输出数据行数: {total_output_rows}")
+    print(f"  标准模板匹配: {matched_count} 行")
+    print(f"  算法金额匹配: {algo_count} 行")
+    print(f"  兜底/异常处理: {fallback_count} 行")
+    print(f"  失败分组数: {len(failed_groups)}")
+    print(f"  总耗时: {pipeline_elapsed:.2f} 秒")
+    print("=" * 50)
 
 def generate_contra_account(input_path: str, output_path: str, interactive: bool = False):
     """主程序入口 (CLI模式)。"""
