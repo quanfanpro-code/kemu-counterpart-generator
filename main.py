@@ -8,7 +8,7 @@ import argparse
 def main():
     multiprocessing.freeze_support()
 
-    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v1.8.0')
+    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v2.0.0')
     parser.add_argument('input', nargs='?', help='输入 Excel 文件路径')
     parser.add_argument('output', nargs='?', help='输出 Excel 文件路径')
     parser.add_argument('--threshold', type=float, default=10000,
@@ -26,7 +26,8 @@ def main():
         import logging
         setup_logger(level=getattr(logging, args.log_level))
         from src.pipeline.orchestrator import generate_contra_account
-        generate_contra_account(args.input, args.output, interactive=False)
+        generate_contra_account(args.input, args.output, interactive=False,
+                                anomaly_threshold=args.threshold)
     else:
         # GUI 模式
         from src.gui.app import run_gui

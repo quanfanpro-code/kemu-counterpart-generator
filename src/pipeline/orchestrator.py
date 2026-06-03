@@ -8,9 +8,10 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import pandas as pd
 
-from ..pipeline.group_processor import process_group
-from ..pipeline.validator import validate_results
-from ..pipeline.anomaly import detect_anomalies, analyze_benford
+from .group_processor import process_group
+from .validator import validate_results
+from .anomaly import detect_anomalies, analyze_benford
+from ..io.reader import load_and_preprocess_data
 from ..io.writer import save_output_file
 from ..utils.logger import logger
 
@@ -124,3 +125,21 @@ def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_p
     logger.info(f"  失败分组数: {len(failed_groups)}")
     logger.info(f"  总耗时: {pipeline_elapsed:.2f} 秒")
     logger.info("=" * 50)
+
+
+def generate_contra_account(input_path: str, output_path: str,
+                            interactive: bool = False,
+                            anomaly_threshold: float = 10000):
+    """
+    CLI 入口函数：从文件读取 → 处理 → 保存结果。
+
+    :param input_path: 输入 Excel 文件路径
+    :param output_path: 输出 Excel 文件路径
+    :param interactive: 是否交互模式（CLI 下为 False）
+    :param anomaly_threshold: 异常金额阈值
+    """
+    df = load_and_preprocess_data(input_path, interactive=interactive)
+    if df is None:
+        logger.error("数据加载失败，退出。")
+        return
+    run_processing_pipeline(df, anomaly_threshold, output_path)

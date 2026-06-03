@@ -42,12 +42,12 @@ def run_gui():
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
         app = ctk.CTk()
-        app.title("对方科目生成工具 v1.8.0")
+        app.title("对方科目生成工具 v2.0.0")
         app.geometry("640x550")
         app.resizable(True, True)
     else:
         app = tk.Tk()
-        app.title("对方科目生成工具 v1.7.0")
+        app.title("对方科目生成工具 v2.0.0")
         app.geometry("600x520")
         app.resizable(True, True)
 
@@ -150,24 +150,12 @@ def run_gui():
                                          parent=app)
             return
 
-        try:
-            import python_calamine
-            engine = 'calamine'
-        except ImportError:
-            engine = 'openpyxl'
+        from src.io.reader import load_and_preprocess_data
 
-        df = pd.read_excel(current_input_path[0], engine=engine)
-
-        # 应用列映射
-        from src.pipeline.data_loader import apply_column_mapping
-        df = apply_column_mapping(df, mapping)
-
-        required_after = ['会计月', '凭证编号', '一级科目', '借方发生额', '贷方发生额']
-        still_missing = [col for col in required_after if col not in df.columns]
-        if still_missing:
-            CustomMessageBox.showerror("错误",
-                                       f"映射后仍缺少必要列: {still_missing}",
-                                       parent=app)
+        df = load_and_preprocess_data(current_input_path[0], interactive=False,
+                                       column_mapping_dialog=lambda cols, reqs: mapping)
+        if df is None:
+            CustomMessageBox.showerror("错误", "数据加载或预处理失败", parent=app)
             return
 
         current_df[0] = df
@@ -201,7 +189,8 @@ def run_gui():
         def worker():
             try:
                 from src.pipeline.orchestrator import run_processing_pipeline
-                run_processing_pipeline(df, anomaly_threshold, output_path)
+                run_processing_pipeline(df, anomaly_threshold, output_path,
+                                        progress_callback=GUI_PROGRESS.update)
 
                 def show_success():
                     if USE_CTK:
@@ -253,7 +242,7 @@ def run_gui():
         if confirm_btn_widget[0]:
             confirm_btn_widget[0].pack_forget()
 
-        from src.pipeline.data_loader import check_column_mapping_needed
+        from src.io.reader import check_column_mapping_needed
         need_mapping, file_columns, missing_cols = check_column_mapping_needed(input_path)
 
         if need_mapping:
@@ -261,12 +250,11 @@ def run_gui():
             print(f"检测到缺少必要列: {', '.join(missing_cols)}")
             show_mapping_config(file_columns, missing_cols)
         else:
-            try:
-                import python_calamine
-                engine = 'calamine'
-            except ImportError:
-                engine = 'openpyxl'
-            df = pd.read_excel(input_path, engine=engine)
+            from src.io.reader import load_and_preprocess_data
+            df = load_and_preprocess_data(input_path, interactive=False)
+            if df is None:
+                progress_label.configure(text="数据加载失败")
+                return
             current_df[0] = df
             print("文件列名匹配成功，开始处理...")
             start_processing()
@@ -390,7 +378,7 @@ def run_gui():
     app.after(100, check_queue)
 
     # ---- 版本号 ----
-    _make_label(main_frame, text="v1.8.0", font=("微软雅黑", 8),
+    _make_label(main_frame, text="v2.0.0", font=("微软雅黑", 8),
                 text_color="gray" if USE_CTK else None,
                 fg="gray" if not USE_CTK else None).pack(side="bottom", pady=(0, 2))
 

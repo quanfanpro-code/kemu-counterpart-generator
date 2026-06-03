@@ -98,7 +98,7 @@ def load_and_preprocess_data(input_path: str, interactive: bool = False,
 
     if missing_cols:
         logger.warning(f"输入文件缺少必要列: {missing_cols}")
-        if interactive and column_mapping_dialog is not None:
+        if column_mapping_dialog is not None:
             if progress_callback:
                 progress_callback(16, "等待用户配置列映射...", "数据预处理")
             logger.info("等待用户手动配置列映射...")
