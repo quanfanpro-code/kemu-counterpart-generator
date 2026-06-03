@@ -49,6 +49,7 @@ TOLERANCE = 0.005                # 金额匹配容差
 FLOAT_EPSILON = 1e-9             # 浮点数相等判断阈值
 AMOUNT_VALID_THRESHOLD = 1e-6    # 发生额有效值判断阈值
 AMOUNT_CHECK_THRESHOLD = 0.01    # 金额校验阈值
+REQUIRED_OUTPUT_COLUMNS = ['借方发生额', '贷方发生额', '对方科目']
 DEFAULT_CPU_CORES = 4            # CPU核心数默认值
 
 # 折半枚举算法（MITM）安全常量 - 取值依据说明：
@@ -1257,6 +1258,9 @@ class GroupProcessor:
         profit_items = [x for x in self.all_items if self._is_profit_subject(x['subject'])]
         if not profit_items:
             return False
+        if len(profit_items) > 1:
+            # 多条损益科目时，特殊规则会错误吞并到第一条；回退到通用匹配更安全。
+            return False
             
         other_items = [x for x in self.all_items if x not in profit_items]
         if not other_items:
@@ -1682,6 +1686,12 @@ def validate_results(df: pd.DataFrame, out_df: pd.DataFrame):
     """验证结果的完整性。"""
     print("正在进行数据完整性校验...")
     GUI_PROGRESS.update(95, "正在校验数据...", "数据校验")
+    
+    if out_df is None:
+        out_df = pd.DataFrame()
+    for col in REQUIRED_OUTPUT_COLUMNS:
+        if col not in out_df.columns:
+            out_df[col] = pd.Series(dtype='object' if col == '对方科目' else 'float64')
     
     orig_debit_sum = df['借方发生额'].sum()
     orig_credit_sum = df['贷方发生额'].sum()

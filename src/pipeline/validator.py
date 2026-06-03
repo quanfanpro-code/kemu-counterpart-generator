@@ -8,6 +8,7 @@ from ..utils.logger import logger
 AMOUNT_CHECK_THRESHOLD = 0.01
 # 发生额有效值判断阈值
 AMOUNT_VALID_THRESHOLD = 1e-6
+REQUIRED_OUTPUT_COLUMNS = ['借方发生额', '贷方发生额', '对方科目']
 
 
 def validate_results(df: pd.DataFrame, out_df: pd.DataFrame,
@@ -22,6 +23,12 @@ def validate_results(df: pd.DataFrame, out_df: pd.DataFrame,
     logger.info("正在进行数据完整性校验...")
     if progress_callback:
         progress_callback(95, "正在校验数据...", "数据校验")
+
+    if out_df is None:
+        out_df = pd.DataFrame()
+    for col in REQUIRED_OUTPUT_COLUMNS:
+        if col not in out_df.columns:
+            out_df[col] = pd.Series(dtype='object' if col == '对方科目' else 'float64')
 
     orig_debit_sum = df['借方发生额'].sum()
     orig_credit_sum = df['贷方发生额'].sum()

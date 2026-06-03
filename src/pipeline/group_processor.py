@@ -115,6 +115,9 @@ class GroupProcessor:
         profit_items = [x for x in self.all_items if self._is_profit_subject(x['subject'])]
         if not profit_items:
             return False
+        if len(profit_items) > 1:
+            # 多条损益科目时，特殊规则会错误吞并到第一条；回退到通用匹配更安全。
+            return False
 
         other_items = [x for x in self.all_items if x not in profit_items]
         if not other_items:
