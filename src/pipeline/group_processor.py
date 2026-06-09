@@ -7,6 +7,7 @@ import pandas as pd
 from ..core.precision import PrecisionEngine
 from ..core.algorithms import solve_subset_sum
 from ..core.rules import check_rule_match
+from ..utils.logger import logger
 
 # 浮点数相等判断阈值
 FLOAT_EPSILON = 1e-9
@@ -53,6 +54,16 @@ class GroupProcessor:
                 'subject': subject,
                 'matched': False
             }
+            # 检查借贷双方是否同时有非零金额（数据异常）
+            d_nonzero = abs(d) > FLOAT_EPSILON
+            c_nonzero = abs(c) > FLOAT_EPSILON
+            if d_nonzero and c_nonzero:
+                logger.warning(
+                    "⚠️ 数据异常：科目「%s」的借贷双方同时存在非零金额（借方=%s, 贷方=%s），"
+                    "将按借方优先处理，贷方金额被忽略。请检查原始数据。",
+                    subject, d, c
+                )
+
             if d > 0:
                 item['amount'] = float(PrecisionEngine.to_decimal(d))
                 item['amount_li'] = PrecisionEngine.to_integer_li(d)
@@ -167,8 +178,9 @@ class GroupProcessor:
             row_diff['匹配类型'] = '结转损益规则(调整)'
             row_diff['借方发生额'] = 0
             row_diff['贷方发生额'] = 0
-            if target_col == '借方发生额': row_diff['借方发生额'] = diff
-            else: row_diff['贷方发生额'] = -diff
+            diff_clean = float(PrecisionEngine.to_decimal(diff))
+            if target_col == '借方发生额': row_diff['借方发生额'] = diff_clean
+            else: row_diff['贷方发生额'] = -diff_clean
             self.output_rows.append(row_diff)
         return True
 
@@ -256,6 +268,17 @@ class GroupProcessor:
         d_idx = 0
         c_idx = 0
 
+        def _set_split_amount(row_data, val):
+            """根据原始行数据中的非零列设置拆分后的金额（保留红字符号）。"""
+            d_orig = row_data.get('借方发生额', 0)
+            c_orig = row_data.get('贷方发生额', 0)
+            if abs(d_orig) > FLOAT_EPSILON:
+                sign = 1 if d_orig > 0 else -1
+                row_data['借方发生额'] = val * sign
+            elif abs(c_orig) > FLOAT_EPSILON:
+                sign = 1 if c_orig > 0 else -1
+                row_data['贷方发生额'] = val * sign
+
         while d_idx < len(unmatched_debit) and c_idx < len(unmatched_credit):
             d_item = unmatched_debit[d_idx]
             c_item = unmatched_credit[c_idx]
@@ -265,26 +288,16 @@ class GroupProcessor:
             val_c = c_item['rem_amount']
             matched_val = min(val_d, val_c)
 
-            def set_split_amount(row_data, val):
-                d_orig = row_data.get('借方发生额', 0)
-                c_orig = row_data.get('贷方发生额', 0)
-                if abs(d_orig) > FLOAT_EPSILON:
-                    sign = 1 if d_orig > 0 else -1
-                    row_data['借方发生额'] = val * sign
-                elif abs(c_orig) > FLOAT_EPSILON:
-                    sign = 1 if c_orig > 0 else -1
-                    row_data['贷方发生额'] = val * sign
-
             row_d = d_item['row_data'].copy()
             row_d['对方科目'] = c_item['subject']
             row_d['匹配类型'] = '算法生成(兜底拆分)'
-            set_split_amount(row_d, matched_val)
+            _set_split_amount(row_d, matched_val)
             self.output_rows.append(row_d)
 
             row_c = c_item['row_data'].copy()
             row_c['对方科目'] = d_item['subject']
             row_c['匹配类型'] = '算法生成(兜底拆分)'
-            set_split_amount(row_c, matched_val)
+            _set_split_amount(row_c, matched_val)
             self.output_rows.append(row_c)
 
             if PrecisionEngine.amounts_match(val_d, matched_val): d_idx += 1

@@ -55,7 +55,8 @@ def detect_anomalies(out_df: pd.DataFrame, threshold: float) -> Tuple[pd.DataFra
         for row in out_df.itertuples(index=False):
             d_amt = abs(getattr(row, '借方发生额', 0))
             c_amt = abs(getattr(row, '贷方发生额', 0))
-            total_amt = d_amt + c_amt
+            # 取较大值作为该行金额，避免借贷同行相反时金额翻倍
+            total_amt = max(d_amt, c_amt)
             if total_amt <= threshold: continue
 
             match_type = str(getattr(row, '匹配类型', ''))
@@ -85,6 +86,10 @@ def detect_anomalies(out_df: pd.DataFrame, threshold: float) -> Tuple[pd.DataFra
             row_with_keys['__debit_key'] = debit_subj
             row_with_keys['__credit_key'] = credit_subj
             anomaly_rows.append(row_with_keys)
+
+            # 只在借方行时记录聚合 pattern，避免同一笔分录的借贷两行都被计数导致金额翻倍
+            if d_amt <= AMOUNT_VALID_THRESHOLD:
+                continue
 
             desc = str(getattr(row, '摘要', getattr(row, '业务说明', '')))
             try:
@@ -150,6 +155,7 @@ def analyze_benford(df: pd.DataFrame) -> pd.DataFrame:
     """班福定律分析。"""
     logger.info("正在计算原始数据的首位数...")
     temp_amount = df['借方发生额'].abs() + df['贷方发生额'].abs()
+    # 将首位数写入 df，用于原始数据 sheet 输出（writer.py 中已从生成结果 sheet 排除）
     df['首位数'] = temp_amount.apply(get_leading_digit)
 
     stats_data = []

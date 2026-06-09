@@ -16,6 +16,9 @@ def _make_label(parent, text, **kw):
     """统一标签创建"""
     font = kw.pop('font', ("微软雅黑", 11))
     if USE_CTK:
+        # CTkLabel 使用 text_color，不接受 fg；清理 tkinter 专属参数
+        kw.pop('fg', None)
+        kw.pop('anchor', None)
         return ctk.CTkLabel(parent, text=text, font=font, **kw)
     else:
         fg = kw.pop('text_color', None) or kw.pop('fg', None)
