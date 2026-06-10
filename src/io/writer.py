@@ -1,16 +1,22 @@
 # -*- coding: utf-8 -*-
-"""数据输出模块"""
+"""数据输出模块 — 摩根系 deep-navy 标准 + 班福图表"""
 from typing import List, Dict, Callable, Optional
 
 import pandas as pd
 
 try:
+    from openpyxl import load_workbook
     from openpyxl.chart import LineChart, Reference
-    from openpyxl.utils import get_column_letter
     OPENPYXL_AVAILABLE = True
 except ImportError:
     OPENPYXL_AVAILABLE = False
-    LineChart = Reference = get_column_letter = None
+    load_workbook = LineChart = Reference = None
+
+try:
+    from make_excel import make_excel
+    MAKE_EXCEL_AVAILABLE = True
+except ImportError:
+    MAKE_EXCEL_AVAILABLE = False
 
 from ..utils.logger import logger
 
@@ -20,7 +26,7 @@ def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
                      stats_df: pd.DataFrame, failed_groups: List[Dict],
                      progress_callback: Optional[Callable] = None):
     """
-    保存结果到 Excel。
+    保存结果到 Excel（摩根系 deep-navy 标准格式）。
 
     :param output_path: 输出文件路径
     :param df: 原始数据
@@ -43,7 +49,8 @@ def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
 
     try:
         logger.info("正在写入Excel文件(包含多个Sheet及图表)...")
-        # 整理列顺序（账套列如果存在则放在最前面）
+
+        # ── 整理列顺序（账套列如果存在则放在最前面）──
         ledger_col = df.attrs.get('ledger_column', None)
         cols = []
         if ledger_col and ledger_col in out_df.columns:
@@ -54,42 +61,56 @@ def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
         final_cols = [c for c in cols if c in out_df.columns]
         out_df = out_df[final_cols]
 
-        with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-            out_df.to_excel(writer, sheet_name='生成结果', index=False)
-            df.to_excel(writer, sheet_name='原始数据', index=False)
+        # ── 构建多 Sheet 数据 ──
+        sheets = [
+            ('生成结果', out_df),
+            ('原始数据', df),
+        ]
 
-            if not anomaly_df.empty:
-                anomaly_df.to_excel(writer, sheet_name='异常分录明细', index=False)
-            else:
-                pd.DataFrame({"提示": ["未检测到符合阈值的异常分录"]}).to_excel(writer, sheet_name='异常分录明细', index=False)
+        if not anomaly_df.empty:
+            sheets.append(('异常分录明细', anomaly_df))
+        else:
+            sheets.append(('异常分录明细', pd.DataFrame({"提示": ["未检测到符合阈值的异常分录"]})))
 
-            if isinstance(aggregated_patterns, pd.DataFrame) and not aggregated_patterns.empty:
-                aggregated_patterns.to_excel(writer, sheet_name='异常分录', index=False)
-            else:
-                pd.DataFrame(columns=['借方科目', '贷方科目', '业务描述', '金额', '凭证编号', '异常类型编号']).to_excel(writer, sheet_name='异常分录', index=False)
+        if isinstance(aggregated_patterns, pd.DataFrame) and not aggregated_patterns.empty:
+            sheets.append(('异常分录', aggregated_patterns))
+        else:
+            sheets.append(('异常分录', pd.DataFrame(columns=['借方科目', '贷方科目', '业务描述', '金额', '凭证编号', '异常类型编号'])))
 
-            if failed_groups:
-                pd.DataFrame(failed_groups).to_excel(writer, sheet_name='失败分组', index=False)
+        if failed_groups:
+            sheets.append(('失败分组', pd.DataFrame(failed_groups)))
 
-            stats_sheet_name = '班福分析'
-            stats_df.to_excel(writer, sheet_name=stats_sheet_name, index=False)
-            stats_ws = writer.sheets[stats_sheet_name]
+        sheets.append(('班福分析', stats_df))
 
-            for row in range(2, 12):
-                for col in (3, 4):
-                    cell = stats_ws.cell(row=row, column=col)
-                    cell.number_format = '0.00%'
+        # ── 使用 make_excel 生成摩根系标准格式 ──
+        if MAKE_EXCEL_AVAILABLE:
+            make_excel(sheets, output_path, theme='deep-navy')
+        else:
+            # 回退：无 make_excel 时用裸 to_excel
+            logger.warning("make_excel 不可用，使用默认格式输出")
+            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                for name, sheet_df in sheets:
+                    sheet_df.to_excel(writer, sheet_name=name, index=False)
 
-            chart = LineChart()
-            chart.title = "班福定律分析 - 首位数分布"
-            chart.style = 13
-            chart.y_axis.title = "比率"
-            chart.x_axis.title = "首位数"
-            cats = Reference(stats_ws, min_col=1, min_row=2, max_row=10)
-            data = Reference(stats_ws, min_col=3, min_row=1, max_row=10, max_col=4)
-            chart.add_data(data, titles_from_data=True)
-            chart.set_categories(cats)
-            stats_ws.add_chart(chart, "F2")
+        # ── 添加班福图表（make_excel 从 B2 写，坐标需偏移 +1）──
+        wb = load_workbook(output_path)
+        stats_ws = wb['班福分析']
+
+        # make_excel 从 B 列(col=2) 第 1 行写表头，数据从第 2 行开始
+        # 班福分析表：首位数在 col=2, 班福频率在 col=4, 实际频率在 col=5
+        # 图表数据引用：表头在第 1 行，数据在第 2~10 行（首位数 1-9）
+        chart = LineChart()
+        chart.title = "班福定律分析 - 首位数分布"
+        chart.style = 13
+        chart.y_axis.title = "比率"
+        chart.x_axis.title = "首位数"
+        cats = Reference(stats_ws, min_col=2, min_row=2, max_row=10)
+        data = Reference(stats_ws, min_col=4, min_row=1, max_row=10, max_col=5)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(cats)
+        stats_ws.add_chart(chart, "H2")
+
+        wb.save(output_path)
 
         logger.info("完成。")
         if progress_callback:
