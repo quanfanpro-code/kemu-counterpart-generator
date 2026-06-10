@@ -48,7 +48,7 @@ def run_gui():
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
         app = ctk.CTk()
-        app.title("对方科目生成工具 v2.0.5")
+        app.title("对方科目生成工具 v2.0.6")
         app.geometry("640x550")
         app.resizable(True, True)
     else:

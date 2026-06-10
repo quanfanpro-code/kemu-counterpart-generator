@@ -8,7 +8,7 @@ import argparse
 def main():
     multiprocessing.freeze_support()
 
-    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v2.0.5')
+    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v2.0.6')
     parser.add_argument('input', nargs='?', help='输入 Excel 文件路径')
     parser.add_argument('output', nargs='?', help='输出 Excel 文件路径')
     parser.add_argument('--threshold', type=float, default=10000,
