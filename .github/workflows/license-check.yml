@@ -1,0 +1,17 @@
+name: License Check
+
+on:
+  push:
+    paths:
+      - 'LICENSE'
+      - 'README.md'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 触发 GitHub Licensee 重扫 LICENSE 文件
+        run: |
+          echo "占位 workflow，用于触发 GitHub 后台 Licensee 重扫 LICENSE 文件。"
+          echo "Commit 时间: $(date -u)"
