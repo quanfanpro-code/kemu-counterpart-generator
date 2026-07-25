@@ -860,4 +860,4 @@ v2.0.0 模块化重构后的紧急修复：
 
 ## 12. LICENSE
 
-本项目采用 MIT 许可证，详情见 [LICENSE](LICENSE) 文件。
+本项目采用 **GNU GPL v3.0** 许可证，详情见 [LICENSE](LICENSE) 文件。
