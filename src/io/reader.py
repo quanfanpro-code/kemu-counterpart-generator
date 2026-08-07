@@ -8,6 +8,8 @@ from ..utils.logger import logger
 # 账套列识别关键词（用于多公司账套检测）
 LEDGER_ACCOUNT_KEYWORDS = ['账套', '核算账套', '公司账套', '账套名', '公司名称', '核算主体', '主体名称']
 AMOUNT_COLUMNS = ['借方发生额', '贷方发生额']
+# 表尾汇总行（如"总计/合计/小计"）不加凭证号，需剔除，避免混入最后一个凭证
+SUMMARY_ROW_KEYWORDS = ['总计', '合计', '小计']
 
 
 def detect_ledger_account_column(columns: List[str]) -> Optional[str]:
@@ -53,6 +55,22 @@ def apply_column_mapping(df: pd.DataFrame, mapping: Dict[str, str]) -> pd.DataFr
     if mapping.get('凭证种类') == "无/不适用" and '凭证种类' in df.columns:
         df.drop(columns=['凭证种类'], inplace=True)
 
+    return df
+
+
+def _drop_summary_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """剔除表尾汇总行（摘要为"总计/合计/小计"，无凭证号、无科目）。"""
+    summary_col = None
+    for col in df.columns:
+        if '摘要' in str(col):
+            summary_col = col
+            break
+    if summary_col is None:
+        return df
+    mask = df[summary_col].astype(str).str.strip().isin(SUMMARY_ROW_KEYWORDS)
+    if mask.any():
+        logger.info(f"检测到 {int(mask.sum())} 行表尾汇总行（摘要为 {SUMMARY_ROW_KEYWORDS}），已自动剔除，避免混入最后一个凭证。")
+        df = df.loc[~mask].copy()
     return df
 
 
@@ -174,6 +192,8 @@ def load_and_preprocess_data(input_path: str, interactive: bool = False,
     if '会计月' in df.columns:
         logger.info("注意：已禁用日期格式自动转换，将直接使用原文件中的[会计月]文本进行分组。")
         df['会计月'] = df['会计月'].astype(str).str.strip()
+
+    df = _drop_summary_rows(df)
 
     df = _normalize_amount_columns(df)
     if df is None:

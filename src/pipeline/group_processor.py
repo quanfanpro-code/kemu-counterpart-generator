@@ -49,7 +49,16 @@ class GroupProcessor:
             row['_orig_idx'] = orig_idx
             d = row['借方发生额']
             c = row['贷方发生额']
-            subject = str(row['一级科目'])
+            subject_raw = row.get('一级科目')
+            # 空科目名称/汇总行不参与匹配，直接按原样保留并跳过
+            subject_str = str(subject_raw).strip() if pd.notna(subject_raw) else ""
+            if not subject_str or subject_str.lower() == 'nan':
+                row_out = row.copy()
+                row_out['对方科目'] = None
+                row_out['匹配类型'] = '跳过(空科目)'
+                self.output_rows.append(row_out)
+                continue
+            subject = subject_str
             item = {
                 'row_data': row.copy(),
                 'subject': subject,
@@ -137,7 +146,8 @@ class GroupProcessor:
         s = str(subj).strip()
         if any(x in s for x in ["费用", "成本", "折旧", "减值", "摊销"]):
             return False
-        return s.startswith("本年利润") or s.startswith("利润分配")
+        # 兼容"4103\本年利润"这类"编码\名称"格式，改用包含匹配而非开头匹配
+        return ("本年利润" in s) or ("利润分配" in s)
 
     def _process_profit_loss(self) -> bool:
         profit_items = [x for x in self.all_items if self._is_profit_subject(x['subject'])]
