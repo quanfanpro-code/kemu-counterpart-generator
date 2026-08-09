@@ -16,15 +16,7 @@ try:
     from make_excel import make_excel
     MAKE_EXCEL_AVAILABLE = True
 except ImportError:
-    # 打包/非常规启动时项目根目录可能不在 sys.path，手动补上再试一次
-    try:
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-        from make_excel import make_excel
-        MAKE_EXCEL_AVAILABLE = True
-    except ImportError:
-        MAKE_EXCEL_AVAILABLE = False
+    MAKE_EXCEL_AVAILABLE = False
 
 from ..utils.logger import logger
 
@@ -94,7 +86,7 @@ def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
 
         # ── 使用 make_excel 生成摩根系标准格式 ──
         if MAKE_EXCEL_AVAILABLE:
-            make_excel(sheets, output_path, theme='deep-navy')
+            make_excel(sheets, output_path)
         else:
             # 回退：无 make_excel 时用裸 to_excel
             logger.warning("make_excel 不可用，使用默认格式输出")

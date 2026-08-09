@@ -14,6 +14,7 @@
 import sys
 import argparse
 import logging
+from copy import copy
 from pathlib import Path
 
 # 开发模式下把项目根加入搜索路径；打包成 exe 后 PyInstaller 已处理依赖
@@ -21,12 +22,25 @@ if not getattr(sys, 'frozen', False):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
+from openpyxl import load_workbook
 
 from src.utils.logger import setup_logger, logger
 from src.io.reader import load_and_preprocess_data
 from src.pipeline.orchestrator import perform_processing
 from src.pipeline.validator import validate_results
 from src.pipeline.anomaly import detect_anomalies, analyze_benford
+
+
+def _居中全部表头(output_path: str) -> None:
+    """仅把每个工作表第一行的非空表头改为水平居中。"""
+    workbook = load_workbook(output_path)
+    for worksheet in workbook.worksheets:
+        for cell in worksheet[1]:
+            if cell.value is not None:
+                alignment = copy(cell.alignment)
+                alignment.horizontal = "center"
+                cell.alignment = alignment
+    workbook.save(output_path)
 
 
 def _整理生成结果列(out_df: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
@@ -50,6 +64,7 @@ def _保存精简模式(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame
     """summary：只输出一张"生成结果"表，普通格式。"""
     _整理生成结果列(out_df, df).to_excel(
         output_path, sheet_name='生成结果', index=False, engine='openpyxl')
+    _居中全部表头(output_path)
 
 
 def _保存完整模式(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
@@ -72,6 +87,7 @@ def _保存完整模式(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame
     with pd.ExcelWriter(output_path, engine='openpyxl') as w:
         for name, sdf in sheets:
             sdf.to_excel(w, sheet_name=name, index=False)
+    _居中全部表头(output_path)
 
 
 def _交互选单(all_columns, required_columns, mapping):

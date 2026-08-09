@@ -62,7 +62,7 @@ def _generate_left_combos(
     return combos, iterations
 
 
-def solve_subset_sum_mitm(
+def solve_subset_sum(
     target: float,
     candidates: List[Tuple[Any, Dict[str, Any]]],
     tolerance: float = 0.01
@@ -157,15 +157,3 @@ def solve_subset_sum_mitm(
 
     result = search_right(0, 0, [])
     return result
-
-
-def solve_subset_sum(target: float, candidates: List[Tuple[Any, float]], tolerance: float = 0.01) -> Optional[List[Any]]:
-    """
-    求解子集和问题（使用折半枚举算法）。
-
-    :param target: 目标金额
-    :param candidates: 候选列表，每个元素为 (item_obj, amount_dict)
-    :param tolerance: 容差（元）
-    :return: 匹配的 item_obj 列表，如果无解返回 None
-    """
-    return solve_subset_sum_mitm(target, candidates, tolerance)

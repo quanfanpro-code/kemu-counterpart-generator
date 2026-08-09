@@ -2,7 +2,7 @@
 # 金融级精度引擎
 
 from decimal import Decimal, getcontext, ROUND_HALF_EVEN, InvalidOperation
-from typing import Any, List
+from typing import Any
 
 # 设置全局精度
 getcontext().prec = 28
@@ -68,17 +68,6 @@ class PrecisionEngine:
             return 0
 
     @staticmethod
-    def from_integer_li(li: int) -> Decimal:
-        """
-        从整数厘转换为Decimal元（2位小数）。
-
-        :param li: 整数厘
-        :return: Decimal元（2位小数）
-        """
-        result = Decimal(li) / PrecisionEngine.SCALE
-        return result.quantize(PrecisionEngine.DECIMAL_QUANTIZER, rounding=ROUND_HALF_EVEN)
-
-    @staticmethod
     def amounts_match(amount1: Any, amount2: Any, tolerance_li: int = None) -> bool:
         """
         判断两个金额是否在容差范围内匹配。
@@ -93,19 +82,6 @@ class PrecisionEngine:
         li1 = PrecisionEngine.to_integer_li(amount1)
         li2 = PrecisionEngine.to_integer_li(amount2)
         return abs(li1 - li2) <= tolerance_li
-
-    @staticmethod
-    def sum_amounts(amounts: List[Any]) -> Decimal:
-        """
-        精确求和。
-
-        :param amounts: 金额列表
-        :return: 精确总和（Decimal，2位小数）
-        """
-        total = Decimal("0")
-        for amt in amounts:
-            total += PrecisionEngine.to_decimal(amt)
-        return total
 
     @staticmethod
     def compare_amounts(amount1: Any, amount2: Any) -> int:
@@ -123,30 +99,3 @@ class PrecisionEngine:
         elif li1 > li2:
             return 1
         return 0
-
-
-# 兼容旧接口的别名
-to_integer_cents = PrecisionEngine.to_integer_li
-from_integer_cents = PrecisionEngine.from_integer_li
-
-
-def amounts_match_precision(amount1: Any, amount2: Any, tolerance_li: int = 200) -> bool:
-    """
-    精确金额匹配函数（兼容旧接口）。
-
-    :param amount1: 金额1
-    :param amount2: 金额2
-    :param tolerance_li: 容差（厘），默认200厘=0.02元=2分
-    :return: 是否匹配
-    """
-    return PrecisionEngine.amounts_match(amount1, amount2, tolerance_li)
-
-
-def sum_amounts_precision(amounts: List[Any]) -> Decimal:
-    """
-    精确求和函数（兼容旧接口）。
-
-    :param amounts: 金额列表
-    :return: 精确总和
-    """
-    return PrecisionEngine.sum_amounts(amounts)

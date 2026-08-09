@@ -24,7 +24,7 @@ from .widgets import (
     CustomMessageBox,
 )
 from .progress import GUI_PROGRESS
-from .log_redirector import GuiLogRedirector, GuiLogHandler, GUI_LOG_QUEUE
+from .log_redirector import GuiLogRedirector, GUI_LOG_QUEUE
 
 
 def run_gui():
@@ -35,12 +35,6 @@ def run_gui():
     log_redirector = GuiLogRedirector(GUI_LOG_QUEUE)
     sys.stdout = log_redirector
     sys.stderr = log_redirector
-
-    # 将 logger 输出也重定向到 GUI 队列
-    import logging
-    from ..utils.logger import logger
-    gui_handler = GuiLogHandler(GUI_LOG_QUEUE)
-    logger.addHandler(gui_handler)
 
     # 创建主窗口
     if USE_CTK:
@@ -385,7 +379,6 @@ def run_gui():
 
         app.after(100, check_queue)
 
-    GUI_PROGRESS.set_gui_callback(True)
     app.after(100, check_queue)
 
     # ---- 版本号 ----

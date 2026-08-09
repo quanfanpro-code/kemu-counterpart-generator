@@ -22,12 +22,17 @@ def main():
 
     if args.input and args.output:
         # CLI 模式
-        from src.utils.logger import setup_logger
+        from src.utils.logger import setup_logger, logger
         import logging
         setup_logger(level=getattr(logging, args.log_level))
-        from src.pipeline.orchestrator import generate_contra_account
-        ok = generate_contra_account(args.input, args.output, interactive=False,
-                                     anomaly_threshold=args.threshold)
+        from src.io.reader import load_and_preprocess_data
+        from src.pipeline.orchestrator import run_processing_pipeline
+        df = load_and_preprocess_data(args.input, interactive=False)
+        if df is None:
+            logger.error("数据加载失败，退出。")
+            ok = False
+        else:
+            ok = run_processing_pipeline(df, args.threshold, args.output)
         sys.exit(0 if ok else 1)
     elif args.no_gui:
         parser.error('--no-gui 模式需要同时提供输入和输出文件路径')

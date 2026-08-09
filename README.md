@@ -1,4 +1,4 @@
-# 序时账对方科目自动生成工具
+﻿# 序时账对方科目自动生成工具
 
 > 版本：v2.0.8
 
@@ -80,13 +80,13 @@
 
 除了上面带界面的版本，项目 `cli` 文件夹里还有一个**纯命令行版**（`序时账分析器命令行版.py`），专门给 AI agent、自动化脚本调用，不依赖图形界面库。
 
-**打包好的 exe** 在 `dist\序时账分析器命令行版.exe`，复制到任何 Windows 电脑都能直接跑，不用装 Python。
+**打包好的 exe** 在 `cli\ledger-cli.exe`，复制到任何 Windows 电脑都能直接跑，不用装 Python。
 
 **基本用法：**
 
 ```
-序时账分析器命令行版.exe 输入文件.xlsx 输出文件.xlsx
-序时账分析器命令行版.exe 输入文件.xlsx 输出文件.xlsx --threshold 50000 --mode full
+cli\ledger-cli.exe 输入文件.xlsx 输出文件.xlsx
+cli\ledger-cli.exe 输入文件.xlsx 输出文件.xlsx --threshold 50000 --mode full
 ```
 
 **参数说明：**
@@ -113,15 +113,16 @@
 - 不弹窗口、不依赖图形界面库，适合服务器/批处理
 - 默认只输出生成结果表（精简），加 `--mode full` 才输出全部
 - 输出用普通 Excel 格式（无深海蓝美化、无班福图表），文件更小、程序更好读
+- `summary` 和 `full` 模式生成的每个工作表首行表头均水平居中
 - 列识别不出时，默认直接报错退出（agent 友好）；加 `-i` 可以在命令行一列一列手动选
 
 **重新打包 exe（开发者）：**
 
 ```
-pyinstaller --clean --noconfirm cli_build.spec
+pyinstaller --noconfirm cli_build.spec
 ```
 
-打包配置在 `cli_build.spec`（已排除 GUI 库和无关大库，产物约 72MB）。
+打包配置在 `cli_build.spec`（已排除 GUI 库，产物约 31MB）。验证通过后，将 `dist\ledger-cli.exe` 复制到项目的 `cli` 文件夹即可。
 
 ---
 
@@ -246,6 +247,8 @@ pyinstaller --clean --noconfirm cli_build.spec
 例如：`2024年序时账.xlsx` → `2024年序时账生成对方科目.xlsx`
 
 文件里包含 6 张工作表：
+
+所有工作表第一行的非空表头均水平居中。
 
 | 工作表 | 里面是什么 | 怎么用 |
 |--------|-----------|--------|
@@ -454,12 +457,14 @@ pyinstaller --clean --noconfirm cli_build.spec
 
 ```
 序时账分析器/
-├── main.py                程序入口（带 GUI）
+├── main.py                主程序入口（自动选择 GUI 或命令行模式）
 ├── make_excel.py          Excel 输出美化模块（deep-navy 摩根系标准格式）
 ├── requirements.txt       依赖列表
 ├── LICENSE                开源许可证
 ├── cli/                   纯命令行版（给 agent / 脚本调用，详见 3.3 节）
-│   └── 序时账分析器命令行版.py
+│   ├── 序时账分析器命令行版.py
+│   └── ledger-cli.exe     可直接运行的纯命令行版
+├── tests/                 冗余约束与 Excel 输出回归检查
 └── src/
     ├── core/              核心算法层
     │   ├── precision.py   金融级精度引擎
@@ -476,7 +481,7 @@ pyinstaller --clean --noconfirm cli_build.spec
     ├── gui/               图形界面层
     │   ├── app.py         主窗口（含列映射配置）
     │   ├── widgets.py     界面组件适配器
-    │   ├── progress.py    进度条管理器
+    │   ├── progress.py    进度消息队列
     │   └── log_redirector.py    日志重定向
     └── utils/             工具层
         └── logger.py      统一日志模块
@@ -497,7 +502,7 @@ pyinstaller --clean --noconfirm cli_build.spec
 - **每层职责单一**：修改某个功能只需要改一个文件
 - **模块解耦**：数据加载与界面完全解耦，通过参数注入列映射对话框
 - **进度通知统一**：从全局变量改为回调函数参数传递
-- **入口唯一**：`main.py` 作为唯一入口，自动判断走 GUI 还是 CLI
+- **入口清晰**：`main.py` 供日常 GUI/命令行使用，`cli` 目录保留专用自动化入口
 
 ---
 
@@ -692,7 +697,7 @@ def find_combination(candidates, target, tolerance):
 | 格式要素 | 说明 |
 |---------|------|
 | **数据起始位置** | 从 B2 单元格开始写入 |
-| **表头样式** | 深海蓝背景 `#1F4E79`、白字粗体、Arial 11 |
+| **表头样式** | 深海蓝背景 `#1F4E79`、白字粗体、Arial 11、水平居中 |
 | **行高** | 统一 18 磅 |
 | **数字格式** | 千分位分隔，数字列自动蓝色字体 |
 | **框线** | 上下粗框线 + 中间虚线，无竖线 |
@@ -705,6 +710,16 @@ def find_combination(candidates, target, tolerance):
 ---
 
 ## 11. 更新日志
+
+### v2.0.8 补充（2026-08-09）-- 冗余精简与表头居中
+
+- 删除未被调用的旧列映射文件、终端进度条、重复日志通道和内部兼容包装，既有程序源码净减少 736 行
+- 保留双 GUI、独立 CLI、主说明文档和已发布 EXE，不改变核心匹配算法、入口参数及退出码
+- 主程序、专用 CLI 源码及 `cli\ledger-cli.exe` 生成的每个工作表首行表头统一水平居中
+- 重建 `cli\ledger-cli.exe`，体积由 32,368,746 字节降至 32,346,279 字节
+- 新增可重复的结构测试和 Excel 工作簿回归检查；逐格验证除首行水平对齐外无其他输出差异
+
+---
 
 ### v2.0.8 修复（2026-08-07）-- 结转损益匹配修复
 

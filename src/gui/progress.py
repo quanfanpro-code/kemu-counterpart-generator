@@ -1,103 +1,17 @@
 # -*- coding: utf-8 -*-
-"""进度条组件（终端版 + GUI 版 + 管理器）"""
-import sys
-import time
+"""GUI 进度消息队列。"""
 import queue
 from typing import Optional
 
-import tkinter as tk
-
-try:
-    import customtkinter as ctk
-    USE_CTK = True
-except ImportError:
-    USE_CTK = False
-    ctk = None
-
-# 进度条刷新频率(秒)
-PROGRESS_UPDATE_FREQ = 0.5
-
-
-class TerminalProgressBar:
-    """终端进度条组件 (简化同步版)。"""
-
-    def __init__(self, update_freq: float = PROGRESS_UPDATE_FREQ):
-        self.update_freq = update_freq
-        self.last_update_time = 0.0
-
-    def update(self, percent: float, message: str, phase: Optional[str] = None):
-        """更新进度状态。"""
-        now = time.time()
-        if now - self.last_update_time < self.update_freq and percent < 100:
-            return
-
-        self.last_update_time = now
-        self._print_line(percent, message, phase)
-
-        if percent >= 100:
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-
-    def stop(self):
-        """停止/完成。"""
-        sys.stdout.write("\n")
-
-    def _print_line(self, percent: float, message: str, phase: Optional[str]):
-        """打印单行进度条。"""
-        bar_len = 30
-        filled = int(bar_len * percent / 100)
-        bar = '█' * filled + '░' * (bar_len - filled)
-        phase_str = f"[{phase}]" if phase else ""
-
-        status_line = (
-            f"\r{phase_str:<15} "
-            f"{bar} "
-            f"{percent:>5.1f}% | "
-            f"{message:<20}"
-        )
-        try:
-            sys.stdout.write(status_line)
-            sys.stdout.flush()
-        except Exception:
-            pass
-
-
-TERM_BAR = TerminalProgressBar(update_freq=PROGRESS_UPDATE_FREQ)
-
-
 class GuiProgressManager:
-    """GUI 进度条管理器 (线程安全)。"""
+    """把工作线程的进度消息交给 GUI 主线程。"""
 
     def __init__(self):
-        self.progress_bar = None
-        self.use_gui = USE_CTK or tk
         self.msg_queue = queue.Queue()
-        self._gui_callback = None
-
-    def set_gui_callback(self, callback):
-        """设置GUI回调函数，用于主线程更新。"""
-        self._gui_callback = callback
-
-    def create_progress_bar(self, parent=None):
-        # 在主线程中创建，或者由外部管理
-        pass
 
     def update(self, percent: float, message: str, phase: Optional[str] = None):
-        """更新进度 (可在任意线程调用)。"""
-        if self._gui_callback:
-            self.msg_queue.put(("update", percent, message, phase))
-        else:
-            TERM_BAR.update(percent, message, phase)
-
-    def stop(self):
-        """停止/完成。"""
-        if self._gui_callback:
-            self.msg_queue.put(("stop", None, None, None))
-        else:
-            TERM_BAR.stop()
-
-    def close(self):
-        self.stop()
+        """更新进度，可在任意线程调用。"""
+        self.msg_queue.put(("update", percent, message, phase))
 
 
 # 全局进度管理器实例

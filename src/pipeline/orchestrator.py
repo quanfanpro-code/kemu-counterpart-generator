@@ -11,8 +11,6 @@ import pandas as pd
 from .group_processor import process_group
 from .validator import validate_results
 from .anomaly import detect_anomalies, analyze_benford
-from ..io.reader import load_and_preprocess_data
-from ..io.writer import save_output_file
 from ..utils.logger import logger
 
 # 分组数低于该阈值时走单进程串行，避免多进程启动开销
@@ -134,6 +132,7 @@ def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_p
     stats_df = analyze_benford(df)
 
     # 7. 保存结果
+    from ..io.writer import save_output_file
     save_ok = save_output_file(output_path, df, out_df, anomaly_df, aggregated_patterns, stats_df, failed_groups,
                                progress_callback=progress_callback)
 
@@ -156,22 +155,3 @@ def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_p
     logger.info(f"  总耗时: {pipeline_elapsed:.2f} 秒")
     logger.info("=" * 50)
     return save_ok
-
-
-def generate_contra_account(input_path: str, output_path: str,
-                            interactive: bool = False,
-                            anomaly_threshold: float = 10000) -> bool:
-    """
-    CLI 入口函数：从文件读取 → 处理 → 保存结果。
-
-    :param input_path: 输入 Excel 文件路径
-    :param output_path: 输出 Excel 文件路径
-    :param interactive: 是否交互模式（CLI 下为 False）
-    :param anomaly_threshold: 异常金额阈值
-    :return: 是否处理成功
-    """
-    df = load_and_preprocess_data(input_path, interactive=interactive)
-    if df is None:
-        logger.error("数据加载失败，退出。")
-        return False
-    return run_processing_pipeline(df, anomaly_threshold, output_path)
