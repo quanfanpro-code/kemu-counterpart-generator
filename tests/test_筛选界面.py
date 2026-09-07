@@ -57,7 +57,9 @@ def test_从桌面主窗口勾选到实际导出(tmp_path, monkeypatch):
             root=master.winfo_toplevel()
             deadline=time.monotonic()+25
             def poll():
-                if target.exists() and target.stat().st_size>0:
+                finished=any(isinstance(w,app.ctk.CTkLabel) and str(w.cget("text")).startswith("完成！输出:")
+                             for w in descendants(root))
+                if finished:
                     try:
                         book=load_workbook(target)
                         assert "入账时间筛选" in book.sheetnames

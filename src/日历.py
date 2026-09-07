@@ -6,6 +6,7 @@ import hashlib
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.request import urlopen
+from urllib.parse import quote
 
 BUNDLED = Path(__file__).with_name("中国节假日.json")
 UPDATE_URL = "https://raw.githubusercontent.com/quanfanpro-code/kemu-counterpart-generator/main/src/中国节假日.json"
@@ -47,7 +48,7 @@ def load_calendar():
 
 def update_calendar():
     """仅下载本项目维护的公开日历，不发送序时账和用户资料。"""
-    with urlopen(UPDATE_URL, timeout=20) as response:
+    with urlopen(quote(UPDATE_URL, safe="/:"), timeout=20) as response:
         payload=response.read(1024*1024+1)
     if len(payload)>1024*1024:
         raise ValueError("日历文件大小异常")

@@ -32,7 +32,11 @@ def test_日历更新先验证再保存_坏更新保留现有文件(tmp_path,mon
         def __exit__(self,*args):pass
         def read(self,size):return self.content
     payload=calendar.BUNDLED.read_bytes()
-    monkeypatch.setattr(calendar,"urlopen",lambda *a,**kw:Response(payload))
+    def download(url, **kwargs):
+        # HTTP请求路径需要编码为ASCII，真实下载不能直接携带中文。
+        url.encode("ascii")
+        return Response(payload)
+    monkeypatch.setattr(calendar,"urlopen",download)
     assert calendar.update_calendar()==["2024","2025","2026"]
     assert path.read_bytes()==payload
     monkeypatch.setattr(calendar,"urlopen",lambda *a,**kw:Response(b"{}"))
