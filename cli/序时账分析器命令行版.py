@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """序时账分析器 - 纯命令行版（给 agent / 脚本自动调用，不依赖图形界面）。
 
 用法：
@@ -152,7 +152,7 @@ def _列映射(all_columns, required_columns, interactive):
 
 
 def _处理(input_path: str, output_path: str, threshold: float, mode: str,
-         interactive: bool = False) -> bool:
+         interactive: bool = False, screening_options=None) -> bool:
     """执行处理流水线并按模式输出。"""
 
     def _dialog(all_columns, required_columns):
@@ -164,6 +164,8 @@ def _处理(input_path: str, output_path: str, threshold: float, mode: str,
         logger.error("数据加载失败，退出。")
         return False
 
+    from src.pipeline.凭证筛选 import run_screening
+    screening_sheets = run_screening(df, screening_options)
     out_df, failed_groups = perform_processing(df)
     validate_results(df, out_df)
 
@@ -175,12 +177,17 @@ def _处理(input_path: str, output_path: str, threshold: float, mode: str,
         _保存完整模式(output_path, df, out_df, anomaly_df, aggregated_patterns,
                      stats_df, failed_groups)
 
+    if screening_sheets:
+        with pd.ExcelWriter(output_path, engine="openpyxl", mode="a", if_sheet_exists="error") as writer:
+            for name, sheet in screening_sheets.items():
+                sheet.to_excel(writer, sheet_name=name, index=False)
+        _居中全部表头(output_path)
     logger.info(f"处理完成，结果已保存到: {output_path}")
     return True
 
 
 def main():
-    parser = argparse.ArgumentParser(description='序时账分析器 - 纯命令行版 v2.0.8')
+    parser = argparse.ArgumentParser(description='序时账分析器 - 纯命令行版 v2.1.0')
     parser.add_argument('input', help='输入 Excel 文件路径')
     parser.add_argument('output', help='输出 Excel 文件路径')
     parser.add_argument('--threshold', type=float, default=10000,
@@ -192,10 +199,12 @@ def main():
                         help='日志级别')
     parser.add_argument('-i', '--interactive', action='store_true',
                         help='列识别不出时弹命令行选单逐列选择（默认缺列直接报错）')
+    from src.pipeline.凭证筛选 import add_screening_arguments, options_from_args
+    add_screening_arguments(parser)
     args = parser.parse_args()
 
     setup_logger(level=getattr(logging, args.log_level))
-    ok = _处理(args.input, args.output, args.threshold, args.mode, args.interactive)
+    ok = _处理(args.input, args.output, args.threshold, args.mode, args.interactive, options_from_args(args))
     sys.exit(0 if ok else 1)
 
 

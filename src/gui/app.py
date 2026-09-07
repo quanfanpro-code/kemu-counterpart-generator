@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """GUI 应用主入口（适配器模式，自动选择 ctk/tk）"""
 import sys
 import os
@@ -41,12 +41,12 @@ def run_gui():
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
         app = ctk.CTk()
-        app.title("对方科目生成工具 v2.0.8")
+        app.title("对方科目生成工具 v2.1.0")
         app.geometry("640x550")
         app.resizable(True, True)
     else:
         app = tk.Tk()
-        app.title("对方科目生成工具 v2.0.8")
+        app.title("对方科目生成工具 v2.1.0")
         app.geometry("600x520")
         app.resizable(True, True)
 
@@ -172,6 +172,11 @@ def run_gui():
 
         df = current_df[0]
         output_path = current_output_path[0]
+        from .筛选设置 import ask_screening_options
+        screening_options = ask_screening_options(app, df, time_screen_var.get(), split_screen_var.get())
+        if screening_options is None:
+            progress_label.configure(text="已取消本次处理")
+            return
         # 记录处理前的文件修改时间，避免把上次遗留的旧文件误判为本次成功
         prev_mtime = os.path.getmtime(output_path) if os.path.exists(output_path) else None
 
@@ -191,7 +196,8 @@ def run_gui():
             try:
                 from src.pipeline.orchestrator import run_processing_pipeline
                 pipeline_ok = run_processing_pipeline(df, anomaly_threshold, output_path,
-                                                      progress_callback=GUI_PROGRESS.update)
+                                                      progress_callback=GUI_PROGRESS.update,
+                                                      screening_options=screening_options)
 
                 def show_success():
                     # 流水线返回成功 且 文件确实是本次新生成的，才算成功
@@ -304,6 +310,18 @@ def run_gui():
     threshold_entry.pack(side="left")
     threshold_entry.insert(0, "10000")
 
+    # 两项都默认关闭。勾选后，选择文件时才按实际列显示设置。
+    time_screen_var = tk.BooleanVar(value=False)
+    split_screen_var = tk.BooleanVar(value=False)
+    optional_frame = _make_frame(main_frame)
+    optional_frame.pack(fill="x", padx=8, pady=3)
+    if USE_CTK:
+        ctk.CTkCheckBox(optional_frame, text="按入账时间筛选（夜间、周末、节假日）", variable=time_screen_var).pack(anchor="w", pady=2)
+        ctk.CTkCheckBox(optional_frame, text="疑似拆分审批筛选", variable=split_screen_var).pack(anchor="w", pady=2)
+    else:
+        ttk.Checkbutton(optional_frame, text="按入账时间筛选（夜间、周末、节假日）", variable=time_screen_var).pack(anchor="w", pady=2)
+        ttk.Checkbutton(optional_frame, text="疑似拆分审批筛选", variable=split_screen_var).pack(anchor="w", pady=2)
+
     # ---- 进度条 ----
     if USE_CTK:
         progress_bar = ctk.CTkProgressBar(main_frame, width=300, height=18)
@@ -382,7 +400,7 @@ def run_gui():
     app.after(100, check_queue)
 
     # ---- 版本号 ----
-    _make_label(main_frame, text="v2.0.8", font=("微软雅黑", 8),
+    _make_label(main_frame, text="v2.1.0", font=("微软雅黑", 8),
                 text_color="gray").pack(side="bottom", pady=(0, 2))
 
     app.mainloop()

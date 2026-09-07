@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """数据读取与预处理模块"""
 import pandas as pd
 from typing import Optional, Dict, List, Tuple
@@ -122,7 +122,9 @@ def load_and_preprocess_data(input_path: str, interactive: bool = False,
         except ImportError:
             engine = 'openpyxl'
         logger.info(f"使用读取引擎: {engine}")
-        df = pd.read_excel(input_path, engine=engine)
+        with pd.ExcelFile(input_path, engine=engine) as source_book:
+            df = pd.read_excel(source_book)
+            df.attrs['source_sheet'] = source_book.sheet_names[0]
         if progress_callback:
             progress_callback(15, "文件读取完成", "数据读取")
     except Exception as e:
@@ -163,6 +165,10 @@ def load_and_preprocess_data(input_path: str, interactive: bool = False,
         else:
             logger.error("错误: 缺少必要列且未启用交互模式或 GUI 不可用。")
             return None
+
+    from pathlib import Path
+    df.attrs['source_path'] = str(Path(input_path).resolve())
+    df.attrs['column_mapping'] = mapping if 'mapping' in locals() else {}
 
     # 数据填充与清洗
     cols_to_ffill = ['会计月', '凭证种类', '凭证编号']

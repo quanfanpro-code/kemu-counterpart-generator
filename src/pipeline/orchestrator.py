@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """处理流水线编排模块"""
 import os
 import time
@@ -108,7 +108,7 @@ def perform_processing(df: pd.DataFrame,
 
 
 def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_path: str,
-                            progress_callback: Optional[Callable] = None) -> bool:
+                            progress_callback: Optional[Callable] = None, screening_options=None) -> bool:
     """
     执行核心处理流水线（适合在工作线程中运行）。
 
@@ -118,6 +118,8 @@ def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_p
     :param progress_callback: 进度回调函数 callback(percent, message, phase)
     :return: 是否成功保存输出文件
     """
+    from .凭证筛选 import run_screening
+    screening_sheets = run_screening(df, screening_options)
     # 3. 执行处理
     pipeline_start = time.time()
     out_df, failed_groups = perform_processing(df, progress_callback=progress_callback)
@@ -134,7 +136,7 @@ def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_p
     # 7. 保存结果
     from ..io.writer import save_output_file
     save_ok = save_output_file(output_path, df, out_df, anomaly_df, aggregated_patterns, stats_df, failed_groups,
-                               progress_callback=progress_callback)
+                               progress_callback=progress_callback, screening_sheets=screening_sheets)
 
     # 8. 输出统计摘要
     pipeline_elapsed = time.time() - pipeline_start

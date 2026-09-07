@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """对方科目生成工具 - 程序入口"""
 import sys
 import multiprocessing
@@ -8,7 +8,7 @@ import argparse
 def main():
     multiprocessing.freeze_support()
 
-    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v2.0.8')
+    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v2.1.0')
     parser.add_argument('input', nargs='?', help='输入 Excel 文件路径')
     parser.add_argument('output', nargs='?', help='输出 Excel 文件路径')
     parser.add_argument('--threshold', type=float, default=10000,
@@ -18,6 +18,8 @@ def main():
     parser.add_argument('--log-level', default='INFO',
                         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='日志级别')
+    from src.pipeline.凭证筛选 import add_screening_arguments, options_from_args
+    add_screening_arguments(parser)
     args = parser.parse_args()
 
     if args.input and args.output:
@@ -32,7 +34,7 @@ def main():
             logger.error("数据加载失败，退出。")
             ok = False
         else:
-            ok = run_processing_pipeline(df, args.threshold, args.output)
+            ok = run_processing_pipeline(df, args.threshold, args.output, screening_options=options_from_args(args))
         sys.exit(0 if ok else 1)
     elif args.no_gui:
         parser.error('--no-gui 模式需要同时提供输入和输出文件路径')

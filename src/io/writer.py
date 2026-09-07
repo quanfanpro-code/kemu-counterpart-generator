@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """数据输出模块 — 摩根系 deep-navy 标准 + 班福图表"""
 from typing import List, Dict, Callable, Optional
 
@@ -24,7 +24,7 @@ from ..utils.logger import logger
 def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
                      anomaly_df: pd.DataFrame, aggregated_patterns: pd.DataFrame,
                      stats_df: pd.DataFrame, failed_groups: List[Dict],
-                     progress_callback: Optional[Callable] = None) -> bool:
+                     progress_callback: Optional[Callable] = None, screening_sheets=None) -> bool:
     """
     保存结果到 Excel（摩根系 deep-navy 标准格式）。
 
@@ -83,6 +83,7 @@ def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
             sheets.append(('失败分组', pd.DataFrame(failed_groups)))
 
         sheets.append(('班福分析', stats_df))
+        sheets.extend((screening_sheets or {}).items())
 
         # ── 使用 make_excel 生成摩根系标准格式 ──
         if MAKE_EXCEL_AVAILABLE:
