@@ -5,10 +5,23 @@ import multiprocessing
 import argparse
 
 
+def _auto_column_mapping(all_columns, required_columns):
+    """CLI 模式列映射：同名自动对应，凭证种类缺失按"无/不适用"处理。"""
+    mapping = {}
+    for req in required_columns:
+        if req in all_columns:
+            mapping[req] = req
+        elif req == '凭证种类':
+            mapping[req] = "无/不适用"
+        else:
+            return None
+    return mapping
+
+
 def main():
     multiprocessing.freeze_support()
 
-    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v2.2.0')
+    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v2.2.1')
     parser.add_argument('input', nargs='?', help='输入 Excel 文件路径')
     parser.add_argument('output', nargs='?', help='输出 Excel 文件路径')
     parser.add_argument('--threshold', type=float, default=10000,
@@ -29,7 +42,8 @@ def main():
         setup_logger(level=getattr(logging, args.log_level))
         from src.io.reader import load_and_preprocess_data
         from src.pipeline.orchestrator import run_processing_pipeline
-        df = load_and_preprocess_data(args.input, interactive=False)
+        df = load_and_preprocess_data(args.input, interactive=False,
+                                      column_mapping_dialog=_auto_column_mapping)
         if df is None:
             logger.error("数据加载失败，退出。")
             ok = False

@@ -29,8 +29,6 @@ from .log_redirector import GuiLogRedirector, GUI_LOG_QUEUE
 
 def run_gui():
     """运行 GUI 应用程序（适配器模式，自动选择 ctk/tk）。"""
-    global progress_bar
-
     # 重定向日志到 GUI 队列
     log_redirector = GuiLogRedirector(GUI_LOG_QUEUE)
     sys.stdout = log_redirector
@@ -41,12 +39,12 @@ def run_gui():
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
         app = ctk.CTk()
-        app.title("对方科目生成工具 v2.2.0")
+        app.title("对方科目生成工具 v2.2.1")
         app.geometry("640x550")
         app.resizable(True, True)
     else:
         app = tk.Tk()
-        app.title("对方科目生成工具 v2.2.0")
+        app.title("对方科目生成工具 v2.2.1")
         app.geometry("600x520")
         app.resizable(True, True)
 
@@ -403,7 +401,7 @@ def run_gui():
     app.after(100, check_queue)
 
     # ---- 版本号 ----
-    _make_label(main_frame, text="v2.2.0", font=("微软雅黑", 8),
+    _make_label(main_frame, text="v2.2.1", font=("微软雅黑", 8),
                 text_color="gray").pack(side="bottom", pady=(0, 2))
 
     app.mainloop()
