@@ -187,7 +187,7 @@ def _处理(input_path: str, output_path: str, threshold: float, mode: str,
 
 
 def main():
-    parser = argparse.ArgumentParser(description='序时账分析器 - 纯命令行版 v2.1.0')
+    parser = argparse.ArgumentParser(description='序时账分析器 - 纯命令行版 v2.2.0')
     parser.add_argument('input', help='输入 Excel 文件路径')
     parser.add_argument('output', help='输出 Excel 文件路径')
     parser.add_argument('--threshold', type=float, default=10000,

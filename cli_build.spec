@@ -5,11 +5,12 @@ a = Analysis(
     ['cli/序时账分析器命令行版.py'],
     pathex=['.'],
     binaries=[],
-    datas=[],
+    datas=[('src/中国节假日.json', 'src')],
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
-    excludes=['customtkinter', 'tkinter'],
+    excludes=['customtkinter', 'tkinter', 'torch', 'scipy', 'matplotlib',
+              'pytest', 'pyarrow', 'numba'],
     noarchive=False,
 )
 

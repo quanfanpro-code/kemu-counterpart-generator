@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """凭证分组处理模块"""
+from math import isfinite
 from typing import Any, Dict, List, Tuple
 
 import pandas as pd
@@ -379,7 +380,57 @@ class GroupProcessor:
             self.output_rows.append(row)
 
 
+def _split_contiguous_balanced_groups(processor: GroupProcessor,
+                                      group: pd.DataFrame) -> List[pd.DataFrame] | None:
+    """仅在完整原始行构成多个连续、严格平衡的分录组时拆组。"""
+    if len(group) < 4 or not group.index.is_unique or not group.index.is_monotonic_increasing:
+        return None
+
+    groups = []
+    start = 0
+    balance_li = 0
+    profit_count = 0
+    for position, (_, row) in enumerate(group.iterrows()):
+        subject = row['一级科目']
+        if pd.isna(subject) or not str(subject).strip() or str(subject).strip().lower() == 'nan':
+            return None
+        if processor._is_profit_subject(str(subject)):
+            profit_count += 1
+            if profit_count > 1:
+                return None
+
+        debit, credit = float(row['借方发生额']), float(row['贷方发生额'])
+        if not isfinite(debit) or not isfinite(credit):
+            return None
+        if debit < 0 or credit < 0 or (debit > 0) == (credit > 0):
+            return None
+        debit_li = PrecisionEngine.to_integer_li(debit)
+        credit_li = PrecisionEngine.to_integer_li(credit)
+        if debit_li == credit_li:
+            return None
+        balance_li += debit_li - credit_li
+        if balance_li == 0:
+            groups.append(group.iloc[start:position + 1])
+            start = position + 1
+
+    # ponytail: 行序与平衡只支持连续分录；交错分录需另有业务证据才扩展。
+    return groups if start == len(group) and len(groups) > 1 else None
+
+
 def process_group(group_data: Tuple[Any, pd.DataFrame]) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """处理单个凭证分组（用于并行计算入口），返回(输出行, 警告列表)。"""
+    """先识别凭证内连续分录，再复用原有凭证匹配流程。"""
     processor = GroupProcessor(group_data)
-    return processor.process()
+    try:
+        groups = _split_contiguous_balanced_groups(processor, group_data[1])
+    except Exception as exc:
+        rows, warnings = processor.process()
+        return rows, warnings + [f"分组{group_data[0]}分录识别失败，已按原凭证处理：{exc}"]
+    if groups is None:
+        return processor.process()
+
+    rows, warnings = [], []
+    for group in groups:
+        group_rows, group_warnings = GroupProcessor((group_data[0], group)).process()
+        rows.extend(group_rows)
+        warnings.extend(group_warnings)
+    return rows, warnings
