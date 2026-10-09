@@ -21,7 +21,7 @@ def _auto_column_mapping(all_columns, required_columns):
 def main():
     multiprocessing.freeze_support()
 
-    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v2.2.1')
+    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v2.3.0')
     parser.add_argument('input', nargs='?', help='输入 Excel 文件路径')
     parser.add_argument('output', nargs='?', help='输出 Excel 文件路径')
     parser.add_argument('--threshold', type=float, default=10000,

@@ -1,8 +1,7 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """GUI 应用主入口（适配器模式，自动选择 ctk/tk）"""
 import sys
 import os
-import traceback
 import threading
 import queue
 from typing import List, Dict, Optional
@@ -29,6 +28,9 @@ from .log_redirector import GuiLogRedirector, GUI_LOG_QUEUE
 
 def run_gui():
     """运行 GUI 应用程序（适配器模式，自动选择 ctk/tk）。"""
+    import gc
+    # 重复启动窗口时，在主线程回收上一窗口，避免后台分配触发其回收。
+    gc.collect()
     # 重定向日志到 GUI 队列
     log_redirector = GuiLogRedirector(GUI_LOG_QUEUE)
     sys.stdout = log_redirector
@@ -39,12 +41,12 @@ def run_gui():
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
         app = ctk.CTk()
-        app.title("对方科目生成工具 v2.2.1")
+        app.title("对方科目生成工具 v2.3.0")
         app.geometry("640x550")
         app.resizable(True, True)
     else:
         app = tk.Tk()
-        app.title("对方科目生成工具 v2.2.1")
+        app.title("对方科目生成工具 v2.3.0")
         app.geometry("600x520")
         app.resizable(True, True)
 
@@ -58,6 +60,35 @@ def run_gui():
     current_output_path = [None]
     current_df: List[Optional[pd.DataFrame]] = [None]
     confirm_btn_widget = [None]
+    busy = [False]
+    progress_active = [False]
+    operation_widgets = []
+    ui_requests = queue.Queue()
+
+    def set_busy(value):
+        busy[0] = value
+        for widget in operation_widgets:
+            widget.configure(state="disabled" if value else "normal")
+
+    def begin_progress():
+        while not GUI_PROGRESS.msg_queue.empty():
+            try:
+                GUI_PROGRESS.msg_queue.get_nowait()
+            except queue.Empty:
+                break
+        progress_active[0] = True
+        if USE_CTK:
+            progress_bar.set(0)
+        else:
+            progress_bar['value'] = 0
+
+    def request_on_main(function, *args):
+        response = queue.Queue(maxsize=1)
+        ui_requests.put((function, args, response))
+        ok, value = response.get()
+        if not ok:
+            raise value
+        return value
 
     auto_match_keywords = {
         '账套': ['账套', '核算账套', '公司账套', '账套名', '公司', '核算主体', '主体'],
@@ -165,15 +196,17 @@ def run_gui():
         start_processing()
 
     def start_processing():
-        if current_df[0] is None:
+        if current_df[0] is None or busy[0]:
             return
 
         df = current_df[0]
         output_path = current_output_path[0]
+        set_busy(True)
         from .筛选设置 import ask_screening_options
         screening_options = ask_screening_options(app, df, time_screen_var.get(), split_screen_var.get())
         if screening_options is None:
             progress_label.configure(text="已取消本次处理")
+            set_busy(False)
             return
         # 记录处理前的文件修改时间，避免把上次遗留的旧文件误判为本次成功
         prev_mtime = os.path.getmtime(output_path) if os.path.exists(output_path) else None
@@ -184,11 +217,9 @@ def run_gui():
             anomaly_threshold = 10000.0
         print(f"异常分录筛选阈值设定为: {anomaly_threshold}")
 
+        set_busy(True)
+        begin_progress()
         progress_label.configure(text="正在处理...")
-        if USE_CTK:
-            progress_bar.set(0)
-        else:
-            progress_bar['value'] = 0
 
         def worker():
             try:
@@ -198,6 +229,8 @@ def run_gui():
                                                       screening_options=screening_options)
 
                 def show_success():
+                    progress_active[0] = False
+                    set_busy(False)
                     # 流水线返回成功 且 文件确实是本次新生成的，才算成功
                     file_fresh = (os.path.exists(output_path)
                                   and (prev_mtime is None or os.path.getmtime(output_path) > prev_mtime))
@@ -213,19 +246,22 @@ def run_gui():
                         progress_label.configure(text="处理失败，请查看日志")
                         print("处理失败：流水线未成功或未生成新的输出文件")
 
-                app.after(0, show_success)
+                ui_requests.put((show_success, (), None))
             except Exception as e:
-                def show_error_worker():
+                def show_error_worker(error=e):
+                    progress_active[0] = False
+                    set_busy(False)
                     progress_label.configure(text="处理失败")
-                    print(f"错误: {str(e)}")
-                    traceback.print_exc()
-                app.after(0, show_error_worker)
+                    print(f"错误: {error}")
+                ui_requests.put((show_error_worker, (), None))
 
         t = threading.Thread(target=worker, daemon=True)
         t.start()
 
     def select_file():
         nonlocal mapping_container
+        if busy[0]:
+            return
         input_path = filedialog.askopenfilename(
             title="请选择序时账 Excel 文件",
             filetypes=[("Excel 文件", "*.xlsx *.xls"), ("所有文件", "*.*")]
@@ -233,6 +269,8 @@ def run_gui():
 
         if not input_path:
             return
+        progress_active[0] = False
+        current_df[0] = None
 
         current_input_path[0] = input_path
         selected_file_label.configure(text=f"已选择: {os.path.basename(input_path)}")
@@ -268,6 +306,73 @@ def run_gui():
             print("文件列名匹配成功，开始处理...")
             start_processing()
 
+    def select_folder():
+        nonlocal mapping_container
+        if busy[0]:
+            return
+        folder = filedialog.askdirectory(parent=app, title="请选择存放序时账的文件夹")
+        if not folder:
+            return
+        try:
+            threshold = float(threshold_entry.get())
+            import math
+            if not math.isfinite(threshold) or threshold < 0:
+                raise ValueError()
+        except ValueError:
+            CustomMessageBox.showwarning("阈值无效", "异常金额阈值必须为非负数字", parent=app)
+            return
+        recursive = recursive_var.get()
+        time_enabled, split_enabled = time_screen_var.get(), split_screen_var.get()
+        current_df[0] = None
+        if mapping_container:
+            mapping_container.destroy()
+            mapping_container = None
+        confirm_btn_widget[0].pack_forget()
+        selected_file_label.configure(text=f"已选择文件夹: {os.path.basename(folder)}")
+        print(f"批处理输入文件夹: {folder}；包含子文件夹: {recursive}")
+        set_busy(True)
+        begin_progress()
+        progress_label.configure(text="正在扫描文件夹...")
+
+        def worker():
+            try:
+                from src.pipeline.批处理 import run_batch
+                from .批处理设置 import ask_batch_mapping
+                from .筛选设置 import ask_screening_options
+                result = run_batch(
+                    folder, recursive=recursive, anomaly_threshold=threshold,
+                    mapping_dialog=lambda cols, reqs: request_on_main(ask_batch_mapping, app, cols, reqs),
+                    screening_dialog=(lambda df: request_on_main(
+                        ask_screening_options, app, df, time_enabled, split_enabled))
+                    if time_enabled or split_enabled else None,
+                    progress_callback=GUI_PROGRESS.update)
+                def finish():
+                    progress_active[0] = False
+                    set_busy(False)
+                    if result["output_dir"] is None:
+                        progress_label.configure(text="没有找到可处理的序时账文件")
+                        print("没有候选 Excel 文件，未创建结果目录。")
+                        return
+                    from collections import Counter
+                    counts = Counter(row["状态"] for row in result["records"])
+                    summary = "，".join(f"{name} {counts[name]}" for name in
+                                       ("成功", "部分失败", "失败", "未处理"))
+                    progress_label.configure(text=f"批处理完成：{summary}")
+                    if USE_CTK:
+                        progress_bar.set(1)
+                    else:
+                        progress_bar['value'] = 100
+                    print(f"批处理完成：{summary}\n结果文件夹: {result['output_dir']}\n请查看批处理清单.csv")
+                ui_requests.put((finish, (), None))
+            except Exception as exc:
+                def fail(error=exc):
+                    progress_active[0] = False
+                    set_busy(False)
+                    progress_label.configure(text="批处理失败，请查看日志")
+                    print(f"批处理错误: {error}")
+                ui_requests.put((fail, (), None))
+        threading.Thread(target=worker, daemon=True).start()
+
     # ---- 顶部信息栏 ----
     if USE_CTK:
         top_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
@@ -296,8 +401,21 @@ def run_gui():
         selected_file_label.pack(pady=(0, 2))
 
     # ---- 选择文件按钮 ----
-    _make_button(main_frame, text="📁 选择Excel文件", command=select_file,
-                 width=160, font=("微软雅黑", 11)).pack(pady=3)
+    input_frame = _make_frame(main_frame)
+    input_frame.pack(fill="x", padx=3, pady=3)
+    file_button = _make_button(input_frame, text="📁 选择Excel文件", command=select_file,
+                              width=160 if USE_CTK else 16, font=("微软雅黑", 11))
+    file_button.grid(row=0, column=0, padx=4, pady=3)
+    folder_button = _make_button(input_frame, text="选择文件夹", command=select_folder,
+                                width=140 if USE_CTK else 14, font=("微软雅黑", 11))
+    folder_button.grid(row=0, column=1, padx=4, pady=3)
+    recursive_var = tk.BooleanVar(value=False)
+    if USE_CTK:
+        recursive_check = ctk.CTkCheckBox(input_frame, text="包含子文件夹", variable=recursive_var)
+    else:
+        recursive_check = ttk.Checkbutton(input_frame, text="包含子文件夹", variable=recursive_var)
+    recursive_check.grid(row=0, column=2, padx=4, pady=3, sticky="w")
+    operation_widgets.extend([file_button, folder_button, recursive_check])
 
     # ---- 阈值输入 ----
     threshold_frame = _make_frame(main_frame)
@@ -307,6 +425,7 @@ def run_gui():
     threshold_entry = _make_entry(threshold_frame, width=100, font=("微软雅黑", 10))
     threshold_entry.pack(side="left")
     threshold_entry.insert(0, "10000")
+    operation_widgets.append(threshold_entry)
 
     # 两项都默认关闭。勾选后，选择文件时才按实际列显示设置。
     time_screen_var = tk.BooleanVar(value=False)
@@ -314,11 +433,14 @@ def run_gui():
     optional_frame = _make_frame(main_frame)
     optional_frame.pack(fill="x", padx=8, pady=3)
     if USE_CTK:
-        ctk.CTkCheckBox(optional_frame, text="按入账时间筛选（夜间、周末、节假日）", variable=time_screen_var).pack(anchor="w", pady=2)
-        ctk.CTkCheckBox(optional_frame, text="疑似拆分审批筛选", variable=split_screen_var).pack(anchor="w", pady=2)
+        time_check = ctk.CTkCheckBox(optional_frame, text="按入账时间筛选（夜间、周末、节假日）", variable=time_screen_var)
+        split_check = ctk.CTkCheckBox(optional_frame, text="疑似拆分审批筛选", variable=split_screen_var)
     else:
-        ttk.Checkbutton(optional_frame, text="按入账时间筛选（夜间、周末、节假日）", variable=time_screen_var).pack(anchor="w", pady=2)
-        ttk.Checkbutton(optional_frame, text="疑似拆分审批筛选", variable=split_screen_var).pack(anchor="w", pady=2)
+        time_check = ttk.Checkbutton(optional_frame, text="按入账时间筛选（夜间、周末、节假日）", variable=time_screen_var)
+        split_check = ttk.Checkbutton(optional_frame, text="疑似拆分审批筛选", variable=split_screen_var)
+    time_check.pack(anchor="w", pady=2)
+    split_check.pack(anchor="w", pady=2)
+    operation_widgets.extend([time_check, split_check])
 
     # ---- 进度条 ----
     if USE_CTK:
@@ -364,10 +486,24 @@ def run_gui():
     def check_queue():
         try:
             while True:
+                function, args, response = ui_requests.get_nowait()
+                try:
+                    value = function(*args)
+                    if response is not None:
+                        response.put((True, value))
+                except Exception as exc:
+                    if response is not None:
+                        response.put((False, exc))
+                    else:
+                        print(f"界面更新失败: {exc}")
+        except queue.Empty:
+            pass
+        try:
+            while True:
                 msg_type, percent, message, phase = GUI_PROGRESS.msg_queue.get_nowait()
                 if msg_type == "update":
                     # 完成提示已显示时，忽略排队中的旧进度消息。
-                    if str(progress_label.cget("text")).startswith("完成！输出:"):
+                    if not progress_active[0]:
                         continue
                     progress_label.configure(text=message)
                     if USE_CTK:
@@ -401,9 +537,15 @@ def run_gui():
     app.after(100, check_queue)
 
     # ---- 版本号 ----
-    _make_label(main_frame, text="v2.2.1", font=("微软雅黑", 8),
+    _make_label(main_frame, text="v2.3.0", font=("微软雅黑", 8),
                 text_color="gray").pack(side="bottom", pady=(0, 2))
 
+    def close_window():
+        if busy[0]:
+            CustomMessageBox.showwarning("正在处理", "请等待本次处理完成后再关闭窗口", parent=app)
+        else:
+            app.destroy()
+    app.protocol("WM_DELETE_WINDOW", close_window)
     app.mainloop()
 
     # 恢复标准输出

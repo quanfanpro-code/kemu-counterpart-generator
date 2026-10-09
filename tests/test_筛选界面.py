@@ -1,4 +1,4 @@
-﻿import tkinter as tk
+import tkinter as tk
 from src.gui.筛选设置 import ScreeningDialog
 from tests.test_凭证筛选 import frame
 
@@ -75,7 +75,8 @@ def test_从桌面主窗口勾选到实际导出(tmp_path, monkeypatch):
                     root.after(100,poll)
             def choose():
                 try:
-                    checks=[w for w in descendants(root) if isinstance(w,app.ctk.CTkCheckBox)]
+                    checks=[w for w in descendants(root) if isinstance(w,app.ctk.CTkCheckBox)
+                            and w.cget("text") != "包含子文件夹"]
                     assert len(checks)==2 and all(w.get()==0 for w in checks)
                     checks[0].select()
                     root.after(100,poll)
