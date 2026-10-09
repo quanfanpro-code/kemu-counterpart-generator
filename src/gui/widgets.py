@@ -66,6 +66,24 @@ def _make_frame(parent, **kw):
         return tk.Frame(parent, **kw)
 
 
+def wait_modal_dialog(parent, dialog):
+    """让 Windows 将操作交给弹窗，退出时可靠恢复主窗口。"""
+    was_disabled = parent.attributes("-disabled")
+    try:
+        dialog.wait_visibility()
+        parent.attributes("-disabled", True)
+        dialog.grab_set()
+        dialog.lift()
+        dialog.focus_set()
+        parent.wait_window(dialog)
+    finally:
+        if parent.winfo_exists():
+            parent.attributes("-disabled", was_disabled)
+            if not was_disabled:
+                parent.lift()
+                parent.focus_set()
+
+
 def _make_toplevel(parent=None, title="", geometry="", grab=True):
     """统一顶层窗口创建"""
     if USE_CTK:

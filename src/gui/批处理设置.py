@@ -2,6 +2,8 @@
 import tkinter as tk
 from tkinter import ttk
 
+from .widgets import wait_modal_dialog
+
 
 class BatchMappingDialog(tk.Toplevel):
     def __init__(self, parent, columns, required):
@@ -44,6 +46,5 @@ class BatchMappingDialog(tk.Toplevel):
 
 def ask_batch_mapping(parent, columns, required):
     dialog = BatchMappingDialog(parent, columns, required)
-    dialog.grab_set()
-    parent.wait_window(dialog)
+    wait_modal_dialog(parent, dialog)
     return dialog.result

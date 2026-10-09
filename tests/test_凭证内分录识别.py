@@ -1,4 +1,4 @@
-﻿"""凭证内多笔分录识别的行为验收。"""
+"""凭证内多笔分录识别的行为验收。"""
 
 import subprocess
 import sys
@@ -32,6 +32,43 @@ def voucher(*entries):
 
 def subject_rows(rows, subject):
     return [row for row in rows if row["一级科目"] == subject]
+
+
+def test_红字成本调整与结转不能跨分录匹配():
+    # 来自合能原表第8688至8694行，仅保留复现所需科目与金额。
+    source = voucher(
+        ("管理费用", -5090.76, 0), ("长期待摊费用", 0, -5090.76),
+        ("研发支出", -73786.41, 0), ("研发支出", -80188.68, 0),
+        ("主营业务成本", 153975.09, 0),
+        ("管理费用", -153975.09, 0), ("研发支出", 0, -153975.09),
+    )
+    rows, warnings = process_group((VOUCHER, source))
+    expected = {
+        0: {"长期待摊费用"}, 1: {"管理费用"},
+        2: {"主营业务成本"}, 3: {"主营业务成本"},
+        4: {"研发支出"}, 5: {"研发支出"}, 6: {"管理费用"},
+    }
+    assert warnings == []
+    for index, counterpart in expected.items():
+        actual = [r for r in rows if r["_orig_idx"] == index]
+        assert {r["对方科目"] for r in actual} == counterpart
+        for column in ["借方发生额", "贷方发生额"]:
+            assert sum(r[column] for r in actual) == pytest.approx(source.loc[index, column])
+
+
+@pytest.mark.parametrize("side", ["借方发生额", "贷方发生额"])
+def test_同侧正负抵销的连续分录也能隔离(side):
+    source = voucher(
+        ("甲", 100, 0), ("乙", -100, 0),
+        ("丙", 100, 0), ("丁", -100, 0),
+    )
+    if side == "贷方发生额":
+        source[["借方发生额", "贷方发生额"]] = source[["贷方发生额", "借方发生额"]].to_numpy()
+    rows, warnings = process_group((VOUCHER, source))
+    assert warnings == []
+    assert {(r["一级科目"], r["对方科目"]) for r in rows} == {
+        ("甲", "乙"), ("乙", "甲"), ("丙", "丁"), ("丁", "丙"),
+    }
 
 
 def test_连续平衡的两笔分录不跨组匹配():

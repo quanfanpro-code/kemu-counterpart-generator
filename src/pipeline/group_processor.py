@@ -402,7 +402,8 @@ def _split_contiguous_balanced_groups(processor: GroupProcessor,
         debit, credit = float(row['借方发生额']), float(row['贷方发生额'])
         if not isfinite(debit) or not isfinite(credit):
             return None
-        if debit < 0 or credit < 0 or (debit > 0) == (credit > 0):
+        # 红字仍保留原符号；同侧正负抵销也可构成完整平衡分录。
+        if (debit != 0) == (credit != 0):
             return None
         debit_li = PrecisionEngine.to_integer_li(debit)
         credit_li = PrecisionEngine.to_integer_li(credit)

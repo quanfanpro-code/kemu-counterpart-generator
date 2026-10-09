@@ -1,9 +1,10 @@
-﻿"""按需显示筛选设置。选择文件之后，直接用该文件的列和科目供用户选择。"""
+"""按需显示筛选设置。选择文件之后，直接用该文件的列和科目供用户选择。"""
 import threading
 import tkinter as tk
 from tkinter import ttk
 
 from src.日历 import update_calendar
+from .widgets import wait_modal_dialog
 
 
 class ScreeningDialog(tk.Toplevel):
@@ -139,6 +140,5 @@ def ask_screening_options(parent,df,time_enabled,split_enabled):
     if not time_enabled and not split_enabled:
         return {}
     dialog=ScreeningDialog(parent,df,time_enabled,split_enabled)
-    dialog.grab_set()
-    parent.wait_window(dialog)
+    wait_modal_dialog(parent,dialog)
     return dialog.result
