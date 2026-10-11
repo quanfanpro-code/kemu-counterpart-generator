@@ -81,6 +81,9 @@ def test_从桌面主窗口勾选到实际导出(tmp_path, monkeypatch):
                     checks[0].select()
                     root.after(100,poll)
                     button.invoke()
+                    starts=[w for w in descendants(root) if isinstance(w,app.ctk.CTkButton)
+                            and w.cget("text")=="开始处理"]
+                    starts[0].invoke()
                 except Exception as exc:
                     errors.append(str(exc));root.destroy()
             root.after(100,choose)

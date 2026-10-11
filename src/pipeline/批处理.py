@@ -63,7 +63,7 @@ def _save_manifest(folder, records):
 
 
 def run_batch(folder, recursive=False, anomaly_threshold=10000, mapping_dialog=None,
-              screening_dialog=None, progress_callback=None):
+              screening_dialog=None, progress_callback=None, stop_event=None):
     """返回结果目录与逐文件记录；可选配置回调由桌面转交给主线程。"""
     if not math.isfinite(anomaly_threshold) or anomaly_threshold < 0:
         raise ValueError("异常金额阈值必须为非负有限数字")
@@ -89,6 +89,12 @@ def run_batch(folder, recursive=False, anomaly_threshold=10000, mapping_dialog=N
     logger.addHandler(errors)
     try:
         for index, source in enumerate(files):
+            # 安全停止只发生在文件之间，当前文件的计算和保存不被打断。
+            if stop_event is not None and stop_event.is_set():
+                for pending in records[index:]:
+                    pending["原因"] = "用户停止本批处理，未处理"
+                _save_manifest(output_dir, records)
+                break
             row = records[index]
             errors.messages.clear()
             relative = source.relative_to(root)

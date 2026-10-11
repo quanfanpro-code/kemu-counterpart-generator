@@ -4,7 +4,8 @@ import sys
 import os
 import threading
 import queue
-from typing import List, Dict, Optional
+import math
+from typing import List, Optional
 
 import tkinter as tk
 from tkinter import filedialog, ttk
@@ -19,7 +20,7 @@ except ImportError:
     ctk = None
 
 from .widgets import (
-    _make_label, _make_button, _make_entry, _make_combobox, _make_frame,
+    _make_label, _make_button, _make_entry, _make_frame,
     CustomMessageBox,
 )
 from .progress import GUI_PROGRESS
@@ -54,13 +55,12 @@ def run_gui():
     main_frame = _make_frame(app)
     main_frame.pack(fill="both", expand=True, padx=10, pady=8)
 
-    mapping_container = None
-    mapping_comboboxes: Dict[str, object] = {}
     current_input_path = [None]
+    current_folder = [None]
     current_output_path = [None]
     current_df: List[Optional[pd.DataFrame]] = [None]
-    confirm_btn_widget = [None]
     busy = [False]
+    stop_event = threading.Event()
     progress_active = [False]
     operation_widgets = []
     ui_requests = queue.Queue()
@@ -69,6 +69,32 @@ def run_gui():
         busy[0] = value
         for widget in operation_widgets:
             widget.configure(state="disabled" if value else "normal")
+        start_button.configure(state="disabled" if value or (
+            current_df[0] is None and current_folder[0] is None) else "normal")
+        stop_button.configure(state="normal" if value and not stop_event.is_set() else "disabled")
+
+    def stop_processing():
+        if busy[0]:
+            stop_event.set()
+            stop_button.configure(state="disabled")
+            progress_label.configure(text="正在停止：等待当前文件完成并保存...")
+            print("已请求安全停止，当前文件完成后不再处理下一份。")
+
+    def begin_processing():
+        if busy[0]:
+            return
+        try:
+            threshold = float(threshold_entry.get())
+            if not math.isfinite(threshold) or threshold < 0:
+                raise ValueError()
+        except ValueError:
+            CustomMessageBox.showwarning("阈值无效", "异常金额阈值必须为非负有限数字", parent=app)
+            return
+        stop_event.clear()
+        if current_folder[0]:
+            process_folder(current_folder[0], threshold)
+        else:
+            start_processing()
 
     def begin_progress():
         while not GUI_PROGRESS.msg_queue.empty():
@@ -90,111 +116,6 @@ def run_gui():
             raise value
         return value
 
-    auto_match_keywords = {
-        '账套': ['账套', '核算账套', '公司账套', '账套名', '公司', '核算主体', '主体'],
-        '会计月': ['月', '日期', 'date', '期间', 'time', '制单日期', '业务日期'],
-        '凭证种类': ['种类', '类型', 'type', 'category', '凭证字'],
-        '凭证编号': ['编号', '凭证号', 'number', 'no'],
-        '一级科目': ['科目', 'subject', '一级', '名称'],
-        '借方发生额': ['借方', 'debit', '借', 'jf'],
-        '贷方发生额': ['贷方', 'credit', '贷', 'df']
-    }
-
-    def show_mapping_config(file_columns: List[str], missing_cols: List[str]):
-        nonlocal mapping_container, mapping_comboboxes
-
-        if mapping_container:
-            mapping_container.destroy()
-
-        mapping_container = _make_frame(main_frame)
-        mapping_container.pack(fill="x", padx=3, pady=3)
-
-        # 提示标签
-        if USE_CTK:
-            _make_label(mapping_container, text="⚠️ 缺少必要列，请配置映射：",
-                        font=("微软雅黑", 10), text_color="#FF6B6B").grid(
-                row=0, column=0, columnspan=3, pady=(3, 2), sticky="w")
-        else:
-            _make_label(mapping_container, text="⚠️ 缺少必要列，请配置映射：",
-                        font=("微软雅黑", 10), fg="red").grid(
-                row=0, column=0, columnspan=3, pady=(3, 2), sticky="w")
-
-        mapping_comboboxes.clear()
-
-        for idx, req_col in enumerate(missing_cols):
-            row = (idx // 3) + 1
-            col = idx % 3
-
-            display_name = req_col
-
-            _make_label(mapping_container, text=f"{display_name}:",
-                        font=("微软雅黑", 9)).grid(
-                row=row, column=col * 2, padx=(5, 0), pady=1, sticky="e")
-
-            combo_values = list(file_columns)
-            if req_col == '凭证种类':
-                combo_values = ["无/不适用"] + combo_values
-
-            cb = _make_combobox(mapping_container, values=combo_values, width=120,
-                                font=("微软雅黑", 9))
-            cb.grid(row=row, column=col * 2 + 1, padx=(0, 5), pady=1, sticky="w")
-
-            # 自动匹配
-            matched = False
-            if req_col in file_columns:
-                cb.set(req_col)
-                matched = True
-            else:
-                keywords = auto_match_keywords.get(req_col, [])
-                for col_name in file_columns:
-                    col_lower = str(col_name).lower()
-                    for kw in keywords:
-                        if kw in col_lower:
-                            cb.set(col_name)
-                            matched = True
-                            break
-                    if matched:
-                        break
-            mapping_comboboxes[req_col] = cb
-
-        if confirm_btn_widget[0]:
-            confirm_btn_widget[0].pack(pady=5)
-
-        app.update_idletasks()
-
-    def confirm_mapping():
-        nonlocal mapping_container
-        mapping = {}
-        missing = []
-        for req_col, cb in mapping_comboboxes.items():
-            val = cb.get()
-            if not val:
-                missing.append(req_col)
-            mapping[req_col] = val
-
-        if missing:
-            CustomMessageBox.showwarning("提示",
-                                         f"请为以下列选择映射：\n{', '.join(missing)}",
-                                         parent=app)
-            return
-
-        from src.io.reader import load_and_preprocess_data
-
-        df = load_and_preprocess_data(current_input_path[0], interactive=False,
-                                       column_mapping_dialog=lambda cols, reqs: mapping)
-        if df is None:
-            CustomMessageBox.showerror("错误", "数据加载或预处理失败", parent=app)
-            return
-
-        current_df[0] = df
-        if mapping_container:
-            mapping_container.destroy()
-            mapping_container = None
-        if confirm_btn_widget[0]:
-            confirm_btn_widget[0].pack_forget()
-
-        start_processing()
-
     def start_processing():
         if current_df[0] is None or busy[0]:
             return
@@ -211,10 +132,7 @@ def run_gui():
         # 记录处理前的文件修改时间，避免把上次遗留的旧文件误判为本次成功
         prev_mtime = os.path.getmtime(output_path) if os.path.exists(output_path) else None
 
-        try:
-            anomaly_threshold = float(threshold_entry.get())
-        except ValueError:
-            anomaly_threshold = 10000.0
+        anomaly_threshold = float(threshold_entry.get())
         print(f"异常分录筛选阈值设定为: {anomaly_threshold}")
 
         set_busy(True)
@@ -240,7 +158,9 @@ def run_gui():
                         else:
                             progress_bar['value'] = 100
                         progress_label.configure(
-                            text=f"完成！输出: {os.path.basename(output_path)}")
+                            text=(f"已停止，当前文件已保存: {os.path.basename(output_path)}"
+                                  if stop_event.is_set() else
+                                  f"完成！输出: {os.path.basename(output_path)}"))
                         print(f"处理完成！输出文件: {output_path}")
                     else:
                         progress_label.configure(text="处理失败，请查看日志")
@@ -259,7 +179,6 @@ def run_gui():
         t.start()
 
     def select_file():
-        nonlocal mapping_container
         if busy[0]:
             return
         input_path = filedialog.askopenfilename(
@@ -271,6 +190,8 @@ def run_gui():
             return
         progress_active[0] = False
         current_df[0] = None
+        current_folder[0] = None
+        set_busy(False)
 
         current_input_path[0] = input_path
         selected_file_label.configure(text=f"已选择: {os.path.basename(input_path)}")
@@ -283,19 +204,22 @@ def run_gui():
         output_path = os.path.join(dir_name, output_name)
         current_output_path[0] = output_path
 
-        if mapping_container:
-            mapping_container.destroy()
-            mapping_container = None
-        if confirm_btn_widget[0]:
-            confirm_btn_widget[0].pack_forget()
-
         from src.io.reader import check_column_mapping_needed
         need_mapping, file_columns, missing_cols = check_column_mapping_needed(input_path)
 
         if need_mapping:
-            progress_label.configure(text="请配置列映射...")
-            print(f"检测到缺少必要列: {', '.join(missing_cols)}")
-            show_mapping_config(file_columns, missing_cols)
+            from .批处理设置 import ask_batch_mapping
+            mapping = ask_batch_mapping(
+                app, file_columns,
+                ["会计月", "凭证编号", "一级科目", "借方发生额", "贷方发生额", "凭证种类"],
+                title="请确认列名对应",
+                hint="确认列名后，请点击主界面的“开始处理”。取消不会开始处理。")
+            if mapping is None:
+                progress_label.configure(text="列映射已取消，请重新选择文件")
+                return
+            from src.io.reader import load_and_preprocess_data
+            current_df[0] = load_and_preprocess_data(
+                input_path, interactive=False, column_mapping_dialog=lambda cols, reqs: mapping)
         else:
             from src.io.reader import load_and_preprocess_data
             df = load_and_preprocess_data(input_path, interactive=False)
@@ -303,31 +227,31 @@ def run_gui():
                 progress_label.configure(text="数据加载失败")
                 return
             current_df[0] = df
-            print("文件列名匹配成功，开始处理...")
-            start_processing()
+        if current_df[0] is None:
+            progress_label.configure(text="数据加载失败，请查看日志")
+        else:
+            progress_label.configure(text="文件已就绪，请点击开始处理")
+            print("文件已就绪，等待开始处理。")
+        set_busy(False)
 
     def select_folder():
-        nonlocal mapping_container
         if busy[0]:
             return
         folder = filedialog.askdirectory(parent=app, title="请选择存放序时账的文件夹")
         if not folder:
             return
-        try:
-            threshold = float(threshold_entry.get())
-            import math
-            if not math.isfinite(threshold) or threshold < 0:
-                raise ValueError()
-        except ValueError:
-            CustomMessageBox.showwarning("阈值无效", "异常金额阈值必须为非负数字", parent=app)
-            return
+        current_folder[0] = folder
+        current_df[0] = None
+        current_input_path[0] = None
+        progress_active[0] = False
+        selected_file_label.configure(text=f"已选择文件夹: {os.path.basename(folder)}")
+        progress_label.configure(text="文件夹已就绪，请点击开始处理")
+        set_busy(False)
+
+    def process_folder(folder, threshold):
         recursive = recursive_var.get()
         time_enabled, split_enabled = time_screen_var.get(), split_screen_var.get()
         current_df[0] = None
-        if mapping_container:
-            mapping_container.destroy()
-            mapping_container = None
-        confirm_btn_widget[0].pack_forget()
         selected_file_label.configure(text=f"已选择文件夹: {os.path.basename(folder)}")
         print(f"批处理输入文件夹: {folder}；包含子文件夹: {recursive}")
         set_busy(True)
@@ -345,7 +269,7 @@ def run_gui():
                     screening_dialog=(lambda df: request_on_main(
                         ask_screening_options, app, df, time_enabled, split_enabled))
                     if time_enabled or split_enabled else None,
-                    progress_callback=GUI_PROGRESS.update)
+                    progress_callback=GUI_PROGRESS.update, stop_event=stop_event)
                 def finish():
                     progress_active[0] = False
                     set_busy(False)
@@ -357,12 +281,14 @@ def run_gui():
                     counts = Counter(row["状态"] for row in result["records"])
                     summary = "，".join(f"{name} {counts[name]}" for name in
                                        ("成功", "部分失败", "失败", "未处理"))
-                    progress_label.configure(text=f"批处理完成：{summary}")
-                    if USE_CTK:
-                        progress_bar.set(1)
-                    else:
-                        progress_bar['value'] = 100
-                    print(f"批处理完成：{summary}\n结果文件夹: {result['output_dir']}\n请查看批处理清单.csv")
+                    state = "批处理已停止" if stop_event.is_set() else "批处理完成"
+                    progress_label.configure(text=f"{state}：{summary}")
+                    if not stop_event.is_set():
+                        if USE_CTK:
+                            progress_bar.set(1)
+                        else:
+                            progress_bar['value'] = 100
+                    print(f"{state}：{summary}\n结果文件夹: {result['output_dir']}\n请查看批处理清单.csv")
                 ui_requests.put((finish, (), None))
             except Exception as exc:
                 def fail(error=exc):
@@ -427,7 +353,7 @@ def run_gui():
     threshold_entry.insert(0, "10000")
     operation_widgets.append(threshold_entry)
 
-    # 两项都默认关闭。勾选后，选择文件时才按实际列显示设置。
+    # 两项都默认关闭，开始处理时按实际列显示设置。
     time_screen_var = tk.BooleanVar(value=False)
     split_screen_var = tk.BooleanVar(value=False)
     optional_frame = _make_frame(main_frame)
@@ -441,6 +367,18 @@ def run_gui():
     time_check.pack(anchor="w", pady=2)
     split_check.pack(anchor="w", pady=2)
     operation_widgets.extend([time_check, split_check])
+
+    # ---- 常驻执行区 ----
+    execution_frame = _make_frame(main_frame)
+    execution_frame.pack(fill="x", padx=8, pady=6)
+    start_button = _make_button(
+        execution_frame, text="开始处理", command=begin_processing,
+        width=150 if USE_CTK else 14, font=("微软雅黑", 14, "bold"), state="disabled")
+    start_button.pack(side="left", padx=4)
+    stop_button = _make_button(
+        execution_frame, text="停止处理", command=stop_processing,
+        width=130 if USE_CTK else 12, font=("微软雅黑", 13), state="disabled")
+    stop_button.pack(side="left", padx=4)
 
     # ---- 进度条 ----
     if USE_CTK:
@@ -459,12 +397,6 @@ def run_gui():
         progress_bar['value'] = 0
         progress_label = tk.Label(main_frame, text="等待操作...", font=("微软雅黑", 10))
         progress_label.pack()
-
-    # ---- 确认按钮（默认隐藏） ----
-    confirm_btn_widget[0] = _make_button(
-        main_frame, text="确认并开始处理", command=confirm_mapping,
-        width=140, font=("微软雅黑", 11))
-    confirm_btn_widget[0].pack_forget()
 
     # ---- 日志区域 ----
     if USE_CTK:
@@ -505,7 +437,8 @@ def run_gui():
                     # 完成提示已显示时，忽略排队中的旧进度消息。
                     if not progress_active[0]:
                         continue
-                    progress_label.configure(text=message)
+                    progress_label.configure(text="正在停止：等待当前文件完成并保存..."
+                                             if stop_event.is_set() else message)
                     if USE_CTK:
                         progress_bar.set(percent / 100.0)
                     else:

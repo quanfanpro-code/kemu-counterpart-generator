@@ -45,6 +45,7 @@ def test_文件夹入口递归开关与运行保护(tmp_path, monkeypatch, recur
                     checks[0].select()
                 assert "选择文件夹" in buttons
                 buttons["选择文件夹"].invoke()
+                buttons["开始处理"].invoke()
                 assert buttons["选择文件夹"].cget("state") == "disabled"
                 root.after(50, poll)
             except Exception as exc:
@@ -114,6 +115,9 @@ def test_批次弹窗主线程配置一次并实际筛选(tmp_path, monkeypatch)
             buttons = [w for w in descendants(root) if isinstance(w, app.ctk.CTkButton)
                        and w.cget("text") == "选择文件夹"]
             buttons[0].invoke()
+            starts = [w for w in descendants(root) if isinstance(w, app.ctk.CTkButton)
+                      and w.cget("text") == "开始处理"]
+            starts[0].invoke()
             root.after(50, poll)
         root.after(100, choose)
         original_loop(root, *args, **kwargs)
