@@ -426,6 +426,24 @@ def process_group(group_data: Tuple[Any, pd.DataFrame]) -> Tuple[List[Dict[str, 
     except Exception as exc:
         rows, warnings = processor.process()
         return rows, warnings + [f"分组{group_data[0]}分录识别失败，已按原凭证处理：{exc}"]
+    try:
+        from .分录判断 import choose_voucher_groups
+        from ..utils.logger import logger
+        decision = choose_voucher_groups(group_data[1], groups)
+        groups = ([group_data[1].iloc[list(part)] for part in decision.groups]
+                  if decision.groups else None)
+        logger.debug("凭证%s 分录判断：%s；候选=%s；三维分数=%s；比较票数=%s",
+                     group_data[0], decision.reason, decision.candidates, decision.scores,
+                     decision.votes)
+        if len(group_data[1]) >= 4:
+            logger.info("凭证%s 分录判断：%s；采用原始行组=%s",
+                        group_data[0], decision.reason,
+                        tuple(tuple(group_data[1].index[i] for i in part)
+                              for part in decision.groups) if decision.groups else None)
+    except Exception as exc:
+        # 新判断失败只退回此前已验证的连续分法，不抹掉红字分录边界。
+        from ..utils.logger import logger
+        logger.warning("凭证%s 三维判断失败，保留原连续处理：%s", group_data[0], exc)
     if groups is None:
         return processor.process()
 
