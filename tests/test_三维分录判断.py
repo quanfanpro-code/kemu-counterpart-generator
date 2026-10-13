@@ -96,7 +96,9 @@ def test_不平衡即使摘要相同也不能拆():
     assert decision(source).groups is None
 
 
-def test_重复业务搜索超预算仍保留连续分法():
+def test_重复业务搜索到时仍保留连续分法(monkeypatch):
+    from src.pipeline import 分录判断 as module
+    monkeypatch.setattr(module, "SPLIT_TIME_LIMIT_SECONDS", 0)
     source = pd.concat([sample() for _ in range(4)], ignore_index=True)
     result = decision(source)
     assert not result.complete
@@ -155,9 +157,11 @@ def test_摘要相似链不能绕过整组冲突():
     assert len(result.candidates) == 2
 
 
-def test_候选超界不从截断结果选多数(monkeypatch):
+def test_候选比较到时不从部分结果选多数(monkeypatch):
     from src.pipeline import 分录判断 as module
-    monkeypatch.setattr(module, "MAX_PLANS", 1)
+    def expired(scores, check_time=None):
+        raise TimeoutError("候选评分到时")
+    monkeypatch.setattr(module, "majority_winner", expired)
     result = decision(sample())
     assert not result.complete and result.groups == ((0, 1), (2, 3))
 

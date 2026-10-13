@@ -50,13 +50,13 @@ def test_超14行交错凭证按业务预筛仍能拆(count, sign):
     assert result.groups == tuple((i, i + count) for i in range(count))
 
 
-def test_关系比较预算耗尽保留连续基线(monkeypatch):
+def test_关系比较到时保留连续基线(monkeypatch):
     from src.pipeline import 分录判断 as module
     from src.pipeline.group_processor import GroupProcessor, _split_contiguous_balanced_groups
     from tests.test_三维分录判断 import sample
     source = sample()
     base = _split_contiguous_balanced_groups(GroupProcessor((None, source)), source)
-    monkeypatch.setattr(module, "MAX_SEARCH_STATES", 1)
+    monkeypatch.setattr(module, "SPLIT_TIME_LIMIT_SECONDS", 0)
     result = module.choose_voucher_groups(source, base)
     assert not result.complete and result.groups == ((0, 1), (2, 3))
 

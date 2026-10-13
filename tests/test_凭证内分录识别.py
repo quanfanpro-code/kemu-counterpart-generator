@@ -92,7 +92,7 @@ def test_连续平衡的两笔分录不跨组匹配():
     assert sum(r["贷方发生额"] for r in rows) == 160
 
 
-def test_混合结转只处理所属的平衡分录():
+def test_混合结转按整凭证最高优先规则处理():
     source = voucher(
         ("本年利润", 100, 0), ("主营业务收入", 0, 100),
         ("管理费用", 50, 0), ("银行存款", 0, 50),
@@ -100,11 +100,14 @@ def test_混合结转只处理所属的平衡分录():
     rows, warnings = process_group((VOUCHER, source))
 
     assert warnings == []
-    assert [r["对方科目"] for r in subject_rows(rows, "本年利润")] == ["主营业务收入"]
-    assert [r["对方科目"] for r in subject_rows(rows, "管理费用")] == ["银行存款"]
-    assert [r["对方科目"] for r in subject_rows(rows, "银行存款")] == ["管理费用"]
+    assert {r["对方科目"] for r in subject_rows(rows, "本年利润")} == {
+        "主营业务收入", "管理费用", "银行存款",
+    }
+    assert [r["对方科目"] for r in subject_rows(rows, "管理费用")] == ["本年利润"]
+    assert [r["对方科目"] for r in subject_rows(rows, "银行存款")] == ["本年利润"]
     assert [r["对方科目"] for r in subject_rows(rows, "主营业务收入")] == ["本年利润"]
     assert subject_rows(rows, "本年利润")[0]["匹配类型"] == "结转损益规则(拆分)"
+    assert (rows, warnings) == GroupProcessor((VOUCHER, source)).process()
 
 
 def test_多条利润科目继续由整凭证旧流程处理():

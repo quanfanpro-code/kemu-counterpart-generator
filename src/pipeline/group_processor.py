@@ -381,7 +381,7 @@ class GroupProcessor:
 
 
 def _split_contiguous_balanced_groups(processor: GroupProcessor,
-                                      group: pd.DataFrame) -> List[pd.DataFrame] | None:
+                                      group: pd.DataFrame, check_time=None) -> List[pd.DataFrame] | None:
     """仅在完整原始行构成多个连续、严格平衡的分录组时拆组。"""
     if len(group) < 4 or not group.index.is_unique or not group.index.is_monotonic_increasing:
         return None
@@ -391,6 +391,8 @@ def _split_contiguous_balanced_groups(processor: GroupProcessor,
     balance_li = 0
     profit_count = 0
     for position, (_, row) in enumerate(group.iterrows()):
+        if check_time:
+            check_time()
         subject = row['一级科目']
         if pd.isna(subject) or not str(subject).strip() or str(subject).strip().lower() == 'nan':
             return None
@@ -419,17 +421,27 @@ def _split_contiguous_balanced_groups(processor: GroupProcessor,
 
 
 def process_group(group_data: Tuple[Any, pd.DataFrame]) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """先识别凭证内连续分录，再复用原有凭证匹配流程。"""
+    """结转损益优先，其余凭证先拆分再复用原匹配流程。"""
     processor = GroupProcessor(group_data)
+    if any(processor._is_profit_subject(subject)
+           for subject in group_data[1]["一级科目"].dropna()):
+        return processor.process()
+    from .分录判断 import choose_voucher_groups, monotonic, SPLIT_TIME_LIMIT_SECONDS
+    deadline = monotonic() + SPLIT_TIME_LIMIT_SECONDS
+    def check_time():
+        if monotonic() >= deadline:
+            raise TimeoutError("拆分未完成：达到每张凭证30秒上限")
+    split_warnings = []
     try:
-        groups = _split_contiguous_balanced_groups(processor, group_data[1])
+        groups = _split_contiguous_balanced_groups(processor, group_data[1], check_time)
     except Exception as exc:
         rows, warnings = processor.process()
         return rows, warnings + [f"分组{group_data[0]}分录识别失败，已按原凭证处理：{exc}"]
     try:
-        from .分录判断 import choose_voucher_groups
         from ..utils.logger import logger
-        decision = choose_voucher_groups(group_data[1], groups)
+        decision = choose_voucher_groups(group_data[1], groups, deadline=deadline)
+        if not decision.complete:
+            split_warnings.append(f"凭证{group_data[0]}：{decision.reason}")
         groups = ([group_data[1].iloc[list(part)] for part in decision.groups]
                   if decision.groups else None)
         logger.debug("凭证%s 分录判断：%s；候选=%s；三维分数=%s；比较票数=%s",
@@ -445,9 +457,10 @@ def process_group(group_data: Tuple[Any, pd.DataFrame]) -> Tuple[List[Dict[str, 
         from ..utils.logger import logger
         logger.warning("凭证%s 三维判断失败，保留原连续处理：%s", group_data[0], exc)
     if groups is None:
-        return processor.process()
+        rows, warnings = processor.process()
+        return rows, warnings + split_warnings
 
-    rows, warnings = [], []
+    rows, warnings = [], split_warnings
     for group in groups:
         group_rows, group_warnings = GroupProcessor((group_data[0], group)).process()
         rows.extend(group_rows)

@@ -18,7 +18,8 @@ def _generate_left_combos(
     target_li: int,
     tolerance_li: int,
     max_iterations: int = MITM_ITERATION_LIMIT,
-    lower_bound: Optional[int] = None
+    lower_bound: Optional[int] = None,
+    check_time=None
 ) -> Tuple[List[Tuple[int, List[Any]]], int]:
     """
     生成左半区所有合法组合。
@@ -39,13 +40,17 @@ def _generate_left_combos(
     remaining_min = [0] * (n + 1)
     remaining_max = [0] * (n + 1)
     for i in range(n - 1, -1, -1):
+        if check_time:
+            check_time()
         remaining_min[i] = remaining_min[i + 1] + min(0, candidates[i][1])
         remaining_max[i] = remaining_max[i + 1] + max(0, candidates[i][1])
 
     def dfs(idx: int, current_sum: int, path: List[Any]):
         nonlocal iterations
+        if check_time:
+            check_time()
         iterations += 1
-        if iterations > max_iterations:
+        if max_iterations is not None and iterations > max_iterations:
             return
 
         # 正负金额均用剩余可达区间剪枝，不能把暂时超额的红字组合丢掉。
@@ -67,38 +72,48 @@ def _generate_left_combos(
         dfs(idx + 1, current_sum, path)
 
     dfs(0, 0, [])
+    if check_time:
+        check_time()
     combos.sort(key=lambda x: x[0])
+    if check_time:
+        check_time()
     return combos, iterations
 
 
-def find_balanced_subsets(candidates, max_iterations=MITM_ITERATION_LIMIT):
+def find_balanced_subsets(candidates, max_iterations=MITM_ITERATION_LIMIT, check_time=None):
     """在预筛范围内返回全部严格零和原始行集合及完整标志；不截行。"""
     n = len(candidates)
     if n < 2:
         return [], 0, True
     mid = n // 2
     # 预计半区叶子数已超预算时提前退出，避免递归深度及指数展开。
-    if mid >= max_iterations.bit_length() or n - mid >= max_iterations.bit_length():
+    if max_iterations is not None and (
+            mid >= max_iterations.bit_length() or n - mid >= max_iterations.bit_length()):
         return [], 0, False
     left_raw, right_raw = candidates[:mid], candidates[mid:]
     def half(items, other, remaining):
         low = -sum(max(0, value) for _, value in other)
         high = -sum(min(0, value) for _, value in other)
-        return _generate_left_combos(items, high, 0, remaining, low)
+        return _generate_left_combos(items, high, 0, remaining, low, check_time)
     left, used = half(left_raw, right_raw, max_iterations)
-    if used > max_iterations:
+    if max_iterations is not None and used > max_iterations:
         return [], max_iterations, False
-    right, right_used = half(right_raw, left_raw, max_iterations - used)
+    right, right_used = half(right_raw, left_raw,
+                            None if max_iterations is None else max_iterations - used)
     used += right_used
-    if used > max_iterations:
+    if max_iterations is not None and used > max_iterations:
         return [], max_iterations, False
     values = [value for value, _ in left]
     parts = []
     for value, path in right:
+        if check_time:
+            check_time()
         start, end = bisect.bisect_left(values, -value), bisect.bisect_right(values, -value)
         for pos in range(start, end):
+            if check_time:
+                check_time()
             used += 1
-            if used > max_iterations:
+            if max_iterations is not None and used > max_iterations:
                 return [], max_iterations, False
             indices = tuple(sorted(left[pos][1] + path))
             if len(indices) >= 2:
