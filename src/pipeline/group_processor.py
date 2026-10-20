@@ -125,6 +125,22 @@ class GroupProcessor:
         self.all_items = self.debit_items + self.credit_items
 
     def _add_match(self, item1: Dict, item2_list: List[Dict], match_type: str = "算法生成"):
+        if len(item2_list) == 1:
+            # 一对一两行金额差在容差内也算配对成功，但两行都保留原金额，
+            # 不按对侧改写，保证输出金额与原账一致
+            match_item = item2_list[0]
+            row_out = item1['row_data'].copy()
+            row_out['对方科目'] = match_item['subject']
+            row_out['匹配类型'] = match_type
+            self.output_rows.append(row_out)
+
+            row_out_2 = match_item['row_data'].copy()
+            row_out_2['对方科目'] = item1['subject']
+            row_out_2['匹配类型'] = match_type
+            self.output_rows.append(row_out_2)
+            return
+
+        split_total = 0.0
         for match_item in item2_list:
             row_out = item1['row_data'].copy()
             row_out['对方科目'] = match_item['subject']
@@ -136,12 +152,32 @@ class GroupProcessor:
             else:
                 if row_out['贷方发生额'] > 0: row_out['贷方发生额'] = amt
                 else: row_out['借方发生额'] = -amt
+            split_total += amt
             self.output_rows.append(row_out)
 
             row_out_2 = match_item['row_data'].copy()
             row_out_2['对方科目'] = item1['subject']
             row_out_2['匹配类型'] = match_type
             self.output_rows.append(row_out_2)
+
+        # 一对多/多对一凑数与原行金额的容差零头单独成行，不再丢掉
+        self._append_tail_row(item1, item1['amount'] - split_total)
+
+    def _append_tail_row(self, item: Dict, diff: float):
+        """容差配对后主行的零头单独成行保留，保证输出合计与原账一致。"""
+        diff = round(diff, 4)
+        if abs(diff) <= FLOAT_EPSILON:
+            return
+        row = item['row_data'].copy()
+        if item['side'] == 'debit':
+            if row['借方发生额'] > 0: row['借方发生额'] = diff
+            else: row['贷方发生额'] = -diff
+        else:
+            if row['贷方发生额'] > 0: row['贷方发生额'] = diff
+            else: row['借方发生额'] = -diff
+        row['对方科目'] = '未找到匹配'
+        row['匹配类型'] = '容差调整'
+        self.output_rows.append(row)
 
     def _is_profit_subject(self, subj: str) -> bool:
         s = str(subj).strip()
@@ -342,10 +378,17 @@ class GroupProcessor:
             _set_split_amount(row_c, matched_val)
             self.output_rows.append(row_c)
 
-            if PrecisionEngine.amounts_match(val_d, matched_val): d_idx += 1
-            else: d_item['rem_amount'] -= matched_val
-            if PrecisionEngine.amounts_match(val_c, matched_val): c_idx += 1
-            else: c_item['rem_amount'] -= matched_val
+            if PrecisionEngine.amounts_match(val_d, matched_val):
+                d_idx += 1
+                # 容差内的剩余零头单独成行保留，不静默丢弃
+                self._append_tail_row(d_item, val_d - matched_val)
+            else:
+                d_item['rem_amount'] -= matched_val
+            if PrecisionEngine.amounts_match(val_c, matched_val):
+                c_idx += 1
+                self._append_tail_row(c_item, val_c - matched_val)
+            else:
+                c_item['rem_amount'] -= matched_val
 
         for i in range(d_idx, len(unmatched_debit)):
             d = unmatched_debit[i]
