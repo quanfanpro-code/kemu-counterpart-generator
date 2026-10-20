@@ -33,11 +33,14 @@ class GroupProcessor:
         if self._process_profit_loss():
             return self.output_rows, self.warnings
 
-        # 2. 阶段一：标准模板优先匹配
-        self._match_standard_rules()
+        # 2. 阶段一：先全员精确匹配——一对一只认金额完全相等，组合搜索只找
+        #    精确拆分，避免容差一对一抢在精确一对多前面把可完整拆分的凭证配残
+        self._match_standard_rules(exact=True)
+        self._match_algo(exact=True)
 
-        # 3. 阶段二：算法金额匹配
-        self._match_algo()
+        # 3. 阶段二：精确配不平的剩余行，再用原一分容差垫底配一遍
+        self._match_standard_rules(exact=False)
+        self._match_algo(exact=False)
 
         # 4. 阶段三：兜底处理
         self._match_fallback()
@@ -248,13 +251,16 @@ class GroupProcessor:
             self.output_rows.append(row_diff)
         return True
 
-    def _match_standard_rules(self):
+    def _match_standard_rules(self, exact=False):
+        # exact=True 时只认金额完全相等、组合精确凑平；False 时用原一分容差垫底
+        tolerance_li = 0 if exact else None
+        subset_tolerance = 0.0 if exact else 0.01
         # 1.1 一对一
         for d in self.debit_items:
             if d['matched']: continue
             for c in self.credit_items:
                 if c['matched'] or c['row_id'] == d['row_id']: continue
-                if PrecisionEngine.amounts_match(d['amount'], c['amount']) and check_rule_match(d['subject'], c['subject']):
+                if PrecisionEngine.amounts_match(d['amount'], c['amount'], tolerance_li) and check_rule_match(d['subject'], c['subject']):
                     d['matched'] = True
                     c['matched'] = True
                     self._add_match(d, [c], match_type="标准模板")
@@ -266,7 +272,7 @@ class GroupProcessor:
                           if not c['matched'] and c['row_id'] != d['row_id']
                           and PrecisionEngine.compare_amounts(c['amount'], d['amount']) <= 0
                           and check_rule_match(d['subject'], c['subject'])]
-            match = solve_subset_sum(d['amount'], candidates)
+            match = solve_subset_sum(d['amount'], candidates, tolerance=subset_tolerance)
             if match:
                 d['matched'] = True
                 matched_credits = []
@@ -281,7 +287,7 @@ class GroupProcessor:
                           if not d['matched'] and d['row_id'] != c['row_id']
                           and PrecisionEngine.compare_amounts(d['amount'], c['amount']) <= 0
                           and check_rule_match(d['subject'], c['subject'])]
-            match = solve_subset_sum(c['amount'], candidates)
+            match = solve_subset_sum(c['amount'], candidates, tolerance=subset_tolerance)
             if match:
                 c['matched'] = True
                 matched_debits = []
@@ -290,13 +296,15 @@ class GroupProcessor:
                     matched_debits.append(d)
                 self._add_match(c, matched_debits, match_type="标准模板")
 
-    def _match_algo(self):
+    def _match_algo(self, exact=False):
+        tolerance_li = 0 if exact else None
+        subset_tolerance = 0.0 if exact else 0.01
         # 2.1 一对一
         for d in self.debit_items:
             if d['matched']: continue
             for c in self.credit_items:
                 if c['matched'] or c['row_id'] == d['row_id']: continue
-                if PrecisionEngine.amounts_match(d['amount'], c['amount']):
+                if PrecisionEngine.amounts_match(d['amount'], c['amount'], tolerance_li):
                     d['matched'] = True
                     c['matched'] = True
                     self._add_match(d, [c], match_type="算法生成")
@@ -307,7 +315,7 @@ class GroupProcessor:
             candidates = [(i, c) for i, c in enumerate(self.credit_items)
                           if not c['matched'] and c['row_id'] != d['row_id']
                           and PrecisionEngine.compare_amounts(c['amount'], d['amount']) <= 0]
-            match = solve_subset_sum(d['amount'], candidates)
+            match = solve_subset_sum(d['amount'], candidates, tolerance=subset_tolerance)
             if match:
                 d['matched'] = True
                 matched_credits = []
@@ -321,7 +329,7 @@ class GroupProcessor:
             candidates = [(i, d) for i, d in enumerate(self.debit_items)
                           if not d['matched'] and d['row_id'] != c['row_id']
                           and PrecisionEngine.compare_amounts(d['amount'], c['amount']) <= 0]
-            match = solve_subset_sum(c['amount'], candidates)
+            match = solve_subset_sum(c['amount'], candidates, tolerance=subset_tolerance)
             if match:
                 c['matched'] = True
                 matched_debits = []
