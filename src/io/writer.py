@@ -4,34 +4,31 @@ from typing import List, Dict, Callable, Optional
 
 import pandas as pd
 
-try:
-    from openpyxl.chart import LineChart, Reference
-    OPENPYXL_AVAILABLE = True
-except ImportError:
-    OPENPYXL_AVAILABLE = False
-    LineChart = Reference = None
-
-try:
-    from make_excel import make_excel
-    MAKE_EXCEL_AVAILABLE = True
-except ImportError:
-    MAKE_EXCEL_AVAILABLE = False
+from make_excel import make_excel
 
 from ..utils.logger import logger
 
 
-def _add_benford_chart(workbook, col_base):
-    stats_ws = workbook['班福分析']
-    chart = LineChart()
-    chart.title = "班福定律分析 - 首位数分布"
-    chart.style = 13
-    chart.y_axis.title = "比率"
-    chart.x_axis.title = "首位数"
-    cats = Reference(stats_ws, min_col=col_base, min_row=2, max_row=10)
-    data = Reference(stats_ws, min_col=col_base + 2, min_row=1, max_row=10, max_col=col_base + 3)
-    chart.add_data(data, titles_from_data=True)
-    chart.set_categories(cats)
-    stats_ws.add_chart(chart, "H2")
+def _col_letter(n):
+    """1 基列号 -> 列字母。"""
+    s = ""
+    while n:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+
+def _benford_chart_def(col_base=2):
+    """班福折线图定义：分类=首位数列，系列=比率两列（首行为名称）。"""
+    col = _col_letter(col_base)
+    ratio = _col_letter(col_base + 2)
+    bench = _col_letter(col_base + 3)
+    return {"类型": "折线", "位置": "H2",
+            "标题": "班福定律分析 - 首位数分布",
+            "X轴标题": "首位数", "Y轴标题": "比率",
+            "分类引用": "'班福分析'!%s2:%s10" % (col, col),
+            "系列": ["'班福分析'!%s1:%s10" % (ratio, ratio),
+                     "'班福分析'!%s1:%s10" % (bench, bench)]}
 
 
 def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
@@ -54,12 +51,6 @@ def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
     logger.info(f"正在保存文件到: {output_path}")
     if progress_callback:
         progress_callback(92, "正在保存Excel文件...", "文件输出")
-
-    if not OPENPYXL_AVAILABLE:
-        logger.error("错误: openpyxl库未安装，无法生成Excel文件。请运行: pip install openpyxl")
-        if progress_callback:
-            progress_callback(0, "保存失败", "错误")
-        return False
 
     try:
         logger.info("正在写入Excel文件(包含多个Sheet及图表)...")
@@ -98,17 +89,13 @@ def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
         sheets.append(('班福分析', stats_df))
         sheets.extend((screening_sheets or {}).items())
 
-        # ── 使用 make_excel 生成摩根系标准格式 ──
-        if MAKE_EXCEL_AVAILABLE:
-            make_excel(sheets, output_path,
-                       postprocess=lambda workbook: _add_benford_chart(workbook, 2))
-        else:
-            # 回退：无 make_excel 时用裸 to_excel
-            logger.warning("make_excel 不可用，使用默认格式输出")
-            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                for name, sheet_df in sheets:
-                    sheet_df.to_excel(writer, sheet_name=name, index=False)
-                _add_benford_chart(writer.book, 1)
+        # ── 使用 make_excel 生成摩根系标准格式，班福图随写入一次成型 ──
+        def add_benford_chart(plans):
+            for tp in plans:
+                if tp.名称 == '班福分析':
+                    tp.图表 = [_benford_chart_def(2)]
+
+        make_excel(sheets, output_path, postprocess=add_benford_chart)
 
         logger.info("完成。")
         if progress_callback:

@@ -7,9 +7,8 @@ import pytest
 from src.io import writer
 
 
-@pytest.mark.parametrize("use_formatter", [True, False])
-def test_图表排版只保存一次(tmp_path, monkeypatch, use_formatter):
-    monkeypatch.setattr(writer, "MAKE_EXCEL_AVAILABLE", use_formatter)
+def test_图表排版只保存一次(tmp_path, monkeypatch):
+    """输出全程不经过 openpyxl 保存，图表随一次成型写入生成。"""
     original_save = openpyxl.Workbook.save
     saves = []
 
@@ -29,7 +28,7 @@ def test_图表排版只保存一次(tmp_path, monkeypatch, use_formatter):
     assert writer.save_output_file(
         str(target), rows, rows, pd.DataFrame(), pd.DataFrame(), stats, []
     )
-    assert len(saves) == 1
+    assert saves == []
     book = openpyxl.load_workbook(target)
     assert len(book["班福分析"]._charts) == 1
     book.close()
