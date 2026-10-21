@@ -9,6 +9,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import pandas as pd
 
 from .group_processor import process_group
+from .原凭证冲销 import apply_documented_reversals
 from .validator import validate_results
 from .anomaly import detect_anomalies, analyze_benford
 from ..utils.logger import logger
@@ -97,6 +98,7 @@ def perform_processing(df: pd.DataFrame,
                 processed_count += 1
                 _report_progress()
 
+    output_rows = apply_documented_reversals(tasks, output_rows, ledger_col)
     logger.info(f"生成输出数据，共 {len(output_rows)} 行...")
     out_df = pd.DataFrame(output_rows)
     # 按原始行号恢复输入顺序（并行完成顺序是随机的）
