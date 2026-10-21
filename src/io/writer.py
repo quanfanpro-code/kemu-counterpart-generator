@@ -5,12 +5,11 @@ from typing import List, Dict, Callable, Optional
 import pandas as pd
 
 try:
-    from openpyxl import load_workbook
     from openpyxl.chart import LineChart, Reference
     OPENPYXL_AVAILABLE = True
 except ImportError:
     OPENPYXL_AVAILABLE = False
-    load_workbook = LineChart = Reference = None
+    LineChart = Reference = None
 
 try:
     from make_excel import make_excel
@@ -19,6 +18,20 @@ except ImportError:
     MAKE_EXCEL_AVAILABLE = False
 
 from ..utils.logger import logger
+
+
+def _add_benford_chart(workbook, col_base):
+    stats_ws = workbook['班福分析']
+    chart = LineChart()
+    chart.title = "班福定律分析 - 首位数分布"
+    chart.style = 13
+    chart.y_axis.title = "比率"
+    chart.x_axis.title = "首位数"
+    cats = Reference(stats_ws, min_col=col_base, min_row=2, max_row=10)
+    data = Reference(stats_ws, min_col=col_base + 2, min_row=1, max_row=10, max_col=col_base + 3)
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(cats)
+    stats_ws.add_chart(chart, "H2")
 
 
 def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
@@ -87,33 +100,15 @@ def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
 
         # ── 使用 make_excel 生成摩根系标准格式 ──
         if MAKE_EXCEL_AVAILABLE:
-            make_excel(sheets, output_path)
+            make_excel(sheets, output_path,
+                       postprocess=lambda workbook: _add_benford_chart(workbook, 2))
         else:
             # 回退：无 make_excel 时用裸 to_excel
             logger.warning("make_excel 不可用，使用默认格式输出")
             with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                 for name, sheet_df in sheets:
                     sheet_df.to_excel(writer, sheet_name=name, index=False)
-
-        # ── 添加班福图表 ──
-        # make_excel 从 B 列写数据（起始列=2）；裸 to_excel 回退时从 A 列写（起始列=1）
-        # 班福分析表：首位数、出现次数、出现比率、班福比率 依次排列
-        wb = load_workbook(output_path)
-        stats_ws = wb['班福分析']
-
-        col_base = 2 if MAKE_EXCEL_AVAILABLE else 1
-        chart = LineChart()
-        chart.title = "班福定律分析 - 首位数分布"
-        chart.style = 13
-        chart.y_axis.title = "比率"
-        chart.x_axis.title = "首位数"
-        cats = Reference(stats_ws, min_col=col_base, min_row=2, max_row=10)
-        data = Reference(stats_ws, min_col=col_base + 2, min_row=1, max_row=10, max_col=col_base + 3)
-        chart.add_data(data, titles_from_data=True)
-        chart.set_categories(cats)
-        stats_ws.add_chart(chart, "H2")
-
-        wb.save(output_path)
+                _add_benford_chart(writer.book, 1)
 
         logger.info("完成。")
         if progress_callback:
