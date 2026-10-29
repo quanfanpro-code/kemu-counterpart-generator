@@ -552,11 +552,17 @@ _C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 _A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
+def _abs_cell(cell):
+    """\"B2\" -> \"$B$2\"（列、行都补绝对标记）。"""
+    列 = "".join(ch for ch in cell if ch.isalpha())
+    行 = "".join(ch for ch in cell if ch.isdigit())
+    return "$%s$%s" % (列, 行)
+
+
 def _abs_ref(ref):
     """\"'表名'!B2:B10\" -> (\"表名\", \"$B$2:$B$10\")。"""
     sheet, rng = ref.split("!", 1)
-    parts = rng.split(":")
-    return sheet.strip("'"), ":".join(p if p.startswith("$") else "$" + p for p in parts)
+    return sheet.strip("'"), ":".join(_abs_cell(p) for p in rng.split(":"))
 
 
 def _axis_title(tag, text):
@@ -576,7 +582,14 @@ def _chart_xml(defn):
         ser_sheet, rng = _abs_ref(series)
         cells = rng.split(":")
         name_ref = cells[0]
-        val_rng = cells[-1] if len(cells) > 1 else cells[0]
+        # 系列首行是名称，取值取第二行到末行（原写法误取成最后一个单元格）
+        val_rng = name_ref
+        if len(cells) > 1:
+            列 = cells[0].split("$")[1]
+            首行 = int(cells[0].split("$")[2]) + 1
+            末行 = int(cells[-1].split("$")[2])
+            if 首行 <= 末行:
+                val_rng = "$%s$%d:$%s$%d" % (列, 首行, 列, 末行)
         sers.append(
             '<c:ser><c:idx val="%d"/><c:order val="%d"/>'
             '<c:tx><c:strRef><c:f>\'%s\'!%s</c:f></c:strRef></c:tx>'
