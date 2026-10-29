@@ -42,12 +42,12 @@ def run_gui():
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
         app = ctk.CTk()
-        app.title("对方科目生成工具 v2.4.0")
+        app.title("对方科目生成工具 v2.5.0")
         app.geometry("640x550")
         app.resizable(True, True)
     else:
         app = tk.Tk()
-        app.title("对方科目生成工具 v2.4.0")
+        app.title("对方科目生成工具 v2.5.0")
         app.geometry("600x520")
         app.resizable(True, True)
 
@@ -470,7 +470,7 @@ def run_gui():
     app.after(100, check_queue)
 
     # ---- 版本号 ----
-    _make_label(main_frame, text="v2.4.0", font=("微软雅黑", 8),
+    _make_label(main_frame, text="v2.5.0", font=("微软雅黑", 8),
                 text_color="gray").pack(side="bottom", pady=(0, 2))
 
     def close_window():
