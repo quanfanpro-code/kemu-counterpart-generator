@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """数据输出模块 — 摩根系 deep-navy 标准 + 班福图表"""
 from typing import List, Dict, Callable, Optional
 
@@ -31,6 +31,62 @@ def _benford_chart_def(col_base=2):
                      "'班福分析'!%s1:%s10" % (bench, bench)]}
 
 
+def arrange_result_columns(df: pd.DataFrame, out_df: pd.DataFrame) -> pd.DataFrame:
+    """整理“生成结果”列顺序，账套列存在时置于最前。"""
+    ledger_col = df.attrs.get('ledger_column', None)
+    cols = []
+    if ledger_col and ledger_col in out_df.columns:
+        cols.append(ledger_col)
+    cols.extend(['记账时间', '会计月', '凭证种类', '凭证编号', '编号', '业务说明', '一级编号', '一级科目', '科目编号', '科目名称', '借方发生额', '贷方发生额', '对方科目', '匹配类型'])
+    for c in df.columns:
+        if c not in cols and c != '首位数':
+            cols.append(c)
+    return out_df[[c for c in cols if c in out_df.columns]]
+
+
+def _center_all_headers(output_path: str) -> None:
+    """将普通输出中每个工作表的非空首行表头居中。"""
+    from copy import copy
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(output_path)
+    try:
+        for worksheet in workbook.worksheets:
+            for cell in worksheet[1]:
+                if cell.value is not None:
+                    alignment = copy(cell.alignment)
+                    alignment.horizontal = "center"
+                    cell.alignment = alignment
+        workbook.save(output_path)
+    finally:
+        workbook.close()
+
+
+def save_summary_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
+                             progress_callback: Optional[Callable] = None, screening_sheets=None) -> bool:
+    """保存普通简版结果，不生成美化或班福图表。"""
+    logger.info(f"正在保存文件到: {output_path}")
+    if progress_callback:
+        progress_callback(92, "正在保存Excel文件...", "文件输出")
+    try:
+        arrange_result_columns(df, out_df).to_excel(
+            output_path, sheet_name='生成结果', index=False, engine='openpyxl')
+        if screening_sheets:
+            with pd.ExcelWriter(output_path, engine="openpyxl", mode="a", if_sheet_exists="error") as writer:
+                for name, sheet in screening_sheets.items():
+                    sheet.to_excel(writer, sheet_name=name, index=False)
+        _center_all_headers(output_path)
+        logger.info("完成。")
+        if progress_callback:
+            progress_callback(100, "处理完成", "完成")
+        return True
+    except Exception as e:
+        logger.error(f"保存文件失败: {e}")
+        if progress_callback:
+            progress_callback(0, "保存失败", "错误")
+        return False
+
+
 def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
                      anomaly_df: pd.DataFrame, aggregated_patterns: pd.DataFrame,
                      stats_df: pd.DataFrame, failed_groups: List[Dict],
@@ -54,17 +110,7 @@ def save_output_file(output_path: str, df: pd.DataFrame, out_df: pd.DataFrame,
 
     try:
         logger.info("正在写入Excel文件(包含多个Sheet及图表)...")
-
-        # ── 整理列顺序（账套列如果存在则放在最前面）──
-        ledger_col = df.attrs.get('ledger_column', None)
-        cols = []
-        if ledger_col and ledger_col in out_df.columns:
-            cols.append(ledger_col)
-        cols.extend(['记账时间', '会计月', '凭证种类', '凭证编号', '编号', '业务说明', '一级编号', '一级科目', '科目编号', '科目名称', '借方发生额', '贷方发生额', '对方科目', '匹配类型'])
-        for c in df.columns:
-            if c not in cols and c != '首位数': cols.append(c)
-        final_cols = [c for c in cols if c in out_df.columns]
-        out_df = out_df[final_cols]
+        out_df = arrange_result_columns(df, out_df)
 
         # ── 构建多 Sheet 数据 ──
         sheets = [

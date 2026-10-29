@@ -4,6 +4,8 @@ import sys
 import multiprocessing
 import argparse
 
+from src import __version__
+
 
 def _auto_column_mapping(all_columns, required_columns):
     """CLI 模式列映射：同名自动对应，凭证种类缺失按"无/不适用"处理。"""
@@ -21,13 +23,15 @@ def _auto_column_mapping(all_columns, required_columns):
 def main():
     multiprocessing.freeze_support()
 
-    parser = argparse.ArgumentParser(description='序时账对方科目生成工具 v2.5.0')
+    parser = argparse.ArgumentParser(description=f'序时账对方科目生成工具 v{__version__}')
     parser.add_argument('input', nargs='?', help='输入 Excel 文件路径')
     parser.add_argument('output', nargs='?', help='输出 Excel 文件路径')
     parser.add_argument('--threshold', type=float, default=10000,
                         help='异常分录筛选阈值（默认10000）')
     parser.add_argument('--no-gui', action='store_true',
                         help='强制 CLI 模式（不启动图形界面）')
+    parser.add_argument('--mode', choices=['full', 'summary'], default='full',
+                        help='输出模式：full 完整美化输出（默认），summary 普通简版输出')
     parser.add_argument('--log-level', default='INFO',
                         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='日志级别')
@@ -48,7 +52,8 @@ def main():
             logger.error("数据加载失败，退出。")
             ok = False
         else:
-            ok = run_processing_pipeline(df, args.threshold, args.output, screening_options=options_from_args(args))
+            ok = run_processing_pipeline(df, args.threshold, args.output,
+                                         screening_options=options_from_args(args), output_mode=args.mode)
         sys.exit(0 if ok else 1)
     elif args.no_gui:
         parser.error('--no-gui 模式需要同时提供输入和输出文件路径')

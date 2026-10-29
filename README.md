@@ -1,6 +1,6 @@
 # 序时账对方科目自动生成工具
 
-> 桌面与主入口源码版本：v2.5.0；独立 CLI 保持 v2.2.1
+> 桌面与无头入口源码版本：v2.5.0
 
 > 这份 README 同时面向 **终端用户**（直接用 exe 的人）和 **开发者**（看代码、改源码的人）。
 > - 如果你只想用 exe 看前 7 章就够了
@@ -93,12 +93,18 @@
 
 每份完成后刷新清单，结束时显示各状态数量。运行中不能修改输入和设置、重复启动或关闭窗口；停止请求发出后请等待当前文件结束。完成或停止后可再次点击开始，新的批次重新建立结果目录和设置缓存；不会自动只续跑未处理文件。
 
-### 3.3 命令行模式（单文件调用）
+### 3.3 无头命令行模式（单文件调用）
 
-如果你想批量跑或者不弹窗口，按住 Shift 右键桌面 → "在此处打开 PowerShell 窗口"，输入：
+如果不想让程序弹窗口，可使用主程序自带的无头模式：
 
 ```
 序时账分析器.exe 输入文件.xlsx 输出文件.xlsx --no-gui
+```
+
+源码版本还可以选择普通简版输出：
+
+```
+python main.py 输入文件.xlsx 输出文件.xlsx --no-gui --mode summary
 ```
 
 常用参数：
@@ -107,47 +113,20 @@
 |------|------|------|
 | `--threshold 50000` | 异常分录筛选阈值（元） | 10000 |
 | `--no-gui` | 不弹窗口，纯命令行模式 | — |
+| `--mode full` | 完整结果，含美化和班福图表 | full |
+| `--mode summary` | 普通“生成结果”表，无美化、无图表 | full |
 | `--log-level DEBUG` | 日志详细程度 | INFO |
 
-### 3.4 纯命令行版（给 agent / 脚本自动调用）
+### 3.4 给 Agent / 脚本自动调用
 
-除了上面带界面的版本，项目 `cli` 文件夹里还有一个**纯命令行版**（`序时账分析器命令行版.py`），专门给 AI agent、自动化脚本调用，不依赖图形界面库。
-
-**独立可执行文件**在 `cli\ledger-cli.exe`，复制到任何 Windows 电脑都能直接跑，不用装 Python。
-
-**基本用法：**
-
-```
-cli\ledger-cli.exe 输入文件.xlsx 输出文件.xlsx
-cli\ledger-cli.exe 输入文件.xlsx 输出文件.xlsx --threshold 50000 --mode full
-```
-
-**参数说明：**
-
-| 参数 | 作用 | 默认 |
-|------|------|------|
-| `输入文件` | 输入 Excel 路径（必填） | - |
-| `输出文件` | 输出 Excel 路径（必填） | - |
-| `--threshold 50000` | 异常分录筛选阈值（元） | 10000 |
-| `--mode summary` | 只输出一张"生成结果"表（精简，适合程序读取） | summary |
-| `--mode full` | 输出全部 sheet（和原版一样，但无美化无图表） | - |
-| `-i` / `--interactive` | 列识别不出时弹命令行选单逐列选 | 不加则缺列直接报错 |
-| `--log-level DEBUG` | 日志详细程度 | INFO |
-
-**两种输出模式：**
+主程序的桌面和无头入口共用同一套处理逻辑、筛选参数和版本号，不再维护另一套独立 CLI。无头模式有两种输出：
 
 | 模式 | 输出内容 | 适合谁 |
 |------|---------|--------|
-| `summary`（默认） | 只一张"生成结果"表（含对方科目、匹配类型列），普通 Excel 格式 | agent、脚本批量处理 |
-| `full` | 全部 sheet（生成结果/原始数据/异常分录明细/异常分录/班福分析），普通格式无图表 | 需要完整分析结果时 |
+| `full`（默认） | 全部 sheet，含主程序美化与班福图表 | 需要完整报告时 |
+| `summary` | 普通“生成结果”表；显式启用筛选时追加筛选表 | Agent、脚本批量处理 |
 
-**和带界面版的区别：**
-
-- 不弹窗口、不依赖图形界面库，适合服务器/批处理
-- 默认只输出生成结果表（精简），加 `--mode full` 才输出全部
-- 输出用普通 Excel 格式（无深海蓝美化、无班福图表），文件更小、程序更好读
-- `summary` 和 `full` 模式生成的每个工作表首行表头均水平居中
-- 列识别不出时，默认直接报错退出（agent 友好）；加 `-i` 可以在命令行一列一列手动选
+旧源码路径 `cli\序时账分析器命令行版.py` 现在只转调 `main.main()`，没有独立处理或输出逻辑。`cli\ledger-cli.exe` 是历史文件，**不再维护，本次也未重新打包**，新任务请使用上面的主程序无头命令。
 
 ### 3.5 可选筛选
 
@@ -177,11 +156,11 @@ cli\ledger-cli.exe 输入文件.xlsx 输出文件.xlsx --threshold 50000 --mode 
 
 #### 3.5.3 命令行筛选参数
 
-主程序和独立CLI使用相同参数。下面以独立CLI为例，源码和随附 ledger-cli.exe 均支持。精简模式在明确启用筛选时，也会追加对应筛选表。
+主程序的无头模式使用相同筛选参数。下面的源码命令使用简版输出；明确启用筛选时，会在“生成结果”后追加对应筛选表。
 
 ```text
-ledger-cli.exe 输入.xlsx 结果.xlsx --screen-date 记账时间 --screen-weekend --screen-holiday --screen-night --work-start 08:00 --work-end 18:00
-ledger-cli.exe 输入.xlsx 结果.xlsx --split-subject-column 一级科目 --split-subject 银行存款 --split-direction 贷方 --approval-limit 100000 --split-minimum 90000 --split-date 记账时间 --split-party 对方单位
+python main.py 输入.xlsx 结果.xlsx --no-gui --mode summary --screen-date 记账时间 --screen-weekend --screen-holiday --screen-night --work-start 08:00 --work-end 18:00
+python main.py 输入.xlsx 结果.xlsx --no-gui --mode summary --split-subject-column 一级科目 --split-subject 银行存款 --split-direction 贷方 --approval-limit 100000 --split-minimum 90000 --split-date 记账时间 --split-party 对方单位
 ```
 
 多选科目可重复指定 --split-subject。启用后参数不全时，原有分析继续，筛选表和说明明确记为未检查。桌面设置窗口也可以选择“本次只做原有分析”。
@@ -530,9 +509,9 @@ ledger-cli.exe 输入.xlsx 结果.xlsx --split-subject-column 一级科目 --spl
 ├── make_excel.py          Excel 输出美化模块（deep-navy 摩根系标准格式）
 ├── requirements.txt       依赖列表
 ├── LICENSE                开源许可证
-├── cli/                   纯命令行版（给 agent / 脚本调用，详见 3.4 节）
-│   ├── 序时账分析器命令行版.py
-│   └── ledger-cli.exe     可直接运行的纯命令行版
+├── cli/                   旧 CLI 转调入口与历史文件
+│   ├── 序时账分析器命令行版.py  仅转调 main.main()
+│   └── ledger-cli.exe     历史 exe，不再维护、未重新打包
 ├── tests/                 冗余约束与 Excel 输出回归检查
 └── src/
     ├── core/              核心算法层
@@ -573,7 +552,7 @@ ledger-cli.exe 输入.xlsx 结果.xlsx --split-subject-column 一级科目 --spl
 - **每层职责单一**：修改某个功能只需要改一个文件
 - **模块解耦**：数据加载与界面完全解耦，通过参数注入列映射对话框
 - **进度通知统一**：从全局变量改为回调函数参数传递
-- **入口清晰**：`main.py` 供日常 GUI/命令行使用，`cli` 目录保留专用自动化入口
+- **入口清晰**：`main.py` 统一桌面与无头调用；旧 CLI 源码仅转调，不再独立演进
 
 ---
 
@@ -743,6 +722,12 @@ ledger-cli.exe 输入.xlsx 结果.xlsx --split-subject-column 一级科目 --spl
 ---
 
 ## 11. 更新日志
+
+### 无头入口统一（2026-10-29）
+
+- 主程序无头模式新增 `--mode full|summary`，默认 `full` 保持完整美化输出；`summary` 生成普通“生成结果”表，启用筛选时追加筛选表。
+- 旧 `cli/序时账分析器命令行版.py` 仅转调 `main.main()`，删除独立参数、处理编排和普通 full 输出；主程序与 GUI 的版本号统一从 `src.__version__` 读取。
+- 本次只更新源码与文档，未重新打包主程序 exe 或旧 `cli/ledger-cli.exe`；旧 CLI exe 不再维护。
 
 ### v2.5.0（2026-10-29）版本号升级
 

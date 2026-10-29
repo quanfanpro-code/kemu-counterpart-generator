@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """处理流水线编排模块"""
 import os
 import time
@@ -110,7 +110,8 @@ def perform_processing(df: pd.DataFrame,
 
 
 def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_path: str,
-                            progress_callback: Optional[Callable] = None, screening_options=None) -> bool:
+                            progress_callback: Optional[Callable] = None, screening_options=None,
+                            output_mode: str = "full") -> bool:
     """
     执行核心处理流水线（适合在工作线程中运行）。
 
@@ -118,8 +119,12 @@ def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_p
     :param anomaly_threshold: 异常金额阈值
     :param output_path: 输出文件路径
     :param progress_callback: 进度回调函数 callback(percent, message, phase)
+    :param output_mode: full 为完整美化输出，summary 为普通简版输出
     :return: 是否成功保存输出文件
     """
+    if output_mode not in {"full", "summary"}:
+        raise ValueError(f"未知 output_mode: {output_mode}")
+
     from .凭证筛选 import run_screening
     screening_sheets = run_screening(df, screening_options)
     # 3. 执行处理
@@ -129,18 +134,19 @@ def run_processing_pipeline(df: pd.DataFrame, anomaly_threshold: float, output_p
     # 4. 验证结果
     validate_results(df, out_df, progress_callback=progress_callback)
 
-    # 5. 检测异常
-    anomaly_df, aggregated_patterns = detect_anomalies(out_df, anomaly_threshold)
+    # 5. 保存结果
+    from ..io.writer import save_output_file, save_summary_output_file
+    if output_mode == "summary":
+        save_ok = save_summary_output_file(output_path, df, out_df,
+                                           progress_callback=progress_callback,
+                                           screening_sheets=screening_sheets)
+    else:
+        anomaly_df, aggregated_patterns = detect_anomalies(out_df, anomaly_threshold)
+        stats_df = analyze_benford(df)
+        save_ok = save_output_file(output_path, df, out_df, anomaly_df, aggregated_patterns, stats_df, failed_groups,
+                                   progress_callback=progress_callback, screening_sheets=screening_sheets)
 
-    # 6. 班福分析
-    stats_df = analyze_benford(df)
-
-    # 7. 保存结果
-    from ..io.writer import save_output_file
-    save_ok = save_output_file(output_path, df, out_df, anomaly_df, aggregated_patterns, stats_df, failed_groups,
-                               progress_callback=progress_callback, screening_sheets=screening_sheets)
-
-    # 8. 输出统计摘要
+    # 6. 输出统计摘要
     pipeline_elapsed = time.time() - pipeline_start
     total_input_rows = len(df)
     total_output_rows = len(out_df)

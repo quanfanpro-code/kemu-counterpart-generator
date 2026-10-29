@@ -217,8 +217,8 @@ def test_真实入口使用摘要三维判断(tmp_path, entry, mode):
     assert list(result.loc[result["一级科目"] == "管理费用", "对方科目"]) == ["银行存款"]
     assert list(result.loc[result["一级科目"] == "主营业务成本", "对方科目"]) == ["库存商品"]
     expected = set(source.columns) | {"对方科目", "匹配类型"}
-    # 主入口原有索引输出继续保留，独立命令行不输出索引。
-    assert set(result.columns) == expected | ({"Unnamed: 0"} if mode is None else set())
+    # 完整输出保留主程序原有索引，简版输出不包含索引。
+    assert set(result.columns) == expected | ({"Unnamed: 0"} if mode != "summary" else set())
 
 
 def test_候选金额和原始行必须完整唯一覆盖():
